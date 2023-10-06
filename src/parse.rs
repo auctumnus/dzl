@@ -107,15 +107,6 @@ impl<'a> From<&'a str> for Parser<'a> {
     }
 }
 
-macro_rules! try_with {
-    ($s:expr, $e:expr) => {
-        match $e {
-            Ok(v) => v,
-            Err(err) => return Err(($s, err)),
-        }
-    };
-}
-
 const DEFAULT_LEXEME_CAPACITY: usize = 32;
 
 impl Parser<'_> {
@@ -155,19 +146,19 @@ impl Parser<'_> {
     /// Takes a closure which returns a result. If the result is Ok, the lexeme
     /// is finished and the closure's result is returned. If the result is Err,
     /// the lexeme is aborted and the error is returned.
-    fn lexeme<'a, F, T, E>(&'a mut self, mut f: F) -> Result<T, E>
+    fn lexeme<F, T, E>(&mut self, mut f: F) -> Result<T, E>
     where
-        F: FnMut(&'a mut Self) -> Result<(&'a mut Self, T), (&'a mut Self, E)>,
+        F: FnMut(&mut Self) -> Result<T, E>,
     {
         self.start_lexeme();
         let result = f(self);
         match result {
-            Ok((s, t)) => {
-                s.finish_lexeme();
+            Ok(t) => {
+                self.finish_lexeme();
                 Ok(t)
             }
-            Err((s, e)) => {
-                s.abort_lexeme();
+            Err(e) => {
+                self.abort_lexeme();
                 Err(e)
             }
         }
@@ -193,12 +184,8 @@ impl Parser<'_> {
             c
         }
     }
-    fn peek(&mut self) -> Option<&char> {
-        if let Some(c) = self.buffer.last() {
-            Some(c)
-        } else {
-            self.src.peek()
-        }
+    fn peek(&mut self) -> Option<char> {
+        self.buffer.last().or_else(|| self.src.peek()).copied()
     }
     fn at_end(&mut self) -> bool {
         self.peek().is_none()
@@ -209,7 +196,7 @@ impl Parser<'_> {
         F: FnMut(char) -> bool,
     {
         let mut s = String::new();
-        while let Some(&c) = self.peek() {
+        while let Some(c) = self.peek() {
             if f(c) {
                 s.push(c);
                 self.next();
@@ -234,51 +221,51 @@ impl Parser<'_> {
     fn boolean(&mut self) -> Result<bool, String> {
         self.lexeme(|s| match s.next() {
             Some('t') => {
-                try_with!(s, s.match_str("rue"));
-                Ok((s, true))
+                s.match_str("rue");
+                Ok(true)
             }
             Some('f') => {
-                try_with!(s, s.match_str("alse"));
-                Ok((s, false))
+                s.match_str("alse");
+                Ok(false)
             }
-            _ => Err((s, "expected true or false".to_string())),
+            _ => Err("expected true or false".to_string()),
         })
     }
     fn ident(&mut self) -> Result<Spur, &'static str> {
         self.lexeme(|s| match s.peek() {
-            Some(c) if unicode_ident::is_xid_start(*c) || *c == '$' || *c == '_' => {
+            Some(c) if unicode_ident::is_xid_start(c) || c == '$' || c == '_' => {
                 let identifier = s.next_while(|c| unicode_ident::is_xid_continue(c) || c == '_');
                 let identifier = s.rodeo.get_or_intern(identifier);
-                Ok((s, identifier))
+                Ok(identifier)
             }
-            _ => Err((s, "identifier must start with XID_Start or _")),
+            _ => Err("identifier must start with XID_Start or _"),
         })
     }
     fn int(&mut self) -> Result<i64, &'static str> {
         self.lexeme(|s| {
             let number = s.next_while(|c| c.is_ascii_digit());
             if let Some('.') = s.peek() {
-                Err((s, "expected integer, found float"))
+                Err("expected integer, found float")
             } else if let Ok(number) = number.parse::<i64>() {
-                Ok((s, number))
+                Ok(number)
             } else {
-                Err((s, "invalid integer"))
+                Err("invalid integer")
             }
         })
     }
     fn float(&mut self) -> Result<f64, &'static str> {
         self.lexeme(|s| {
             let n1 = s.next_while(|c| c.is_ascii_digit());
-            if let Some(&'.') = s.peek() {
+            if let Some('.') = s.peek() {
                 s.next();
                 let n2 = s.next_while(|c| c.is_ascii_digit());
                 if let Ok(n) = format!("{n1}.{n2}").parse::<f64>() {
-                    Ok((s, n))
+                    Ok(n)
                 } else {
-                    Err((s, "invalid float"))
+                    Err("invalid float")
                 }
             } else {
-                Err((s, "expected float, found integer"))
+                Err("expected float, found integer")
             }
         })
     }
@@ -290,12 +277,12 @@ impl Parser<'_> {
                 if let Some('"') = s.peek() {
                     s.next();
                     let string = s.rodeo.get_or_intern(string);
-                    Ok((s, string))
+                    Ok(string)
                 } else {
-                    Err((s, "unterminated string"))
+                    Err("unterminated string")
                 }
             } else {
-                Err((s, "expected string"))
+                Err("expected string")
             }
         })
     }
@@ -314,10 +301,10 @@ impl Parser<'_> {
             } else if let Ok(boolean) = s.boolean() {
                 Terminal::Bool(boolean)
             } else {
-                return Err((s, "expected terminal".to_string()));
+                return Err("expected terminal".to_string());
             };
             s.skip_whitespace();
-            Ok((s, terminal))
+            Ok(terminal)
         })
     }
     fn skip_whitespace(&mut self) {
@@ -339,7 +326,7 @@ impl Parser<'_> {
                         s.next();
                         Eq
                     } else {
-                        return Err((s, "expected =".to_string()));
+                        return Err("expected =".to_string());
                     }
                 }
                 Some('!') => {
@@ -347,7 +334,7 @@ impl Parser<'_> {
                         s.next();
                         Neq
                     } else {
-                        return Err((s, "expected =".to_string()));
+                        return Err("expected =".to_string());
                     }
                 }
                 Some('<') => {
@@ -371,7 +358,7 @@ impl Parser<'_> {
                         s.next();
                         And
                     } else {
-                        return Err((s, "expected &".to_string()));
+                        return Err("expected &".to_string());
                     }
                 }
                 Some('|') => {
@@ -379,14 +366,14 @@ impl Parser<'_> {
                         s.next();
                         Or
                     } else {
-                        return Err((s, "expected |".to_string()));
+                        return Err("expected |".to_string());
                     }
                 }
-                Some(c) => return Err((s, format!("unexpected token {c}"))),
-                None => return Err((s, "unexpected end of file".to_string())),
+                Some(c) => return Err(format!("unexpected token {c}")),
+                None => return Err("unexpected end of file".to_string()),
             };
             s.skip_whitespace();
-            Ok((s, op))
+            Ok(op)
         })
     }
 
@@ -396,17 +383,17 @@ impl Parser<'_> {
                 Some('-') => UnaryOp::Neg,
                 Some('!') => UnaryOp::Not,
                 Some(c) => {
-                    return Err((s, format!("unexpected token {c}")));
+                    return Err(format!("unexpected token {c}"));
                 }
                 None => {
-                    return Err((s, "unexpected end of file".to_string()));
+                    return Err("unexpected end of file".to_string());
                 }
             };
             let terminal = match s.terminal() {
                 Ok(terminal) => terminal,
-                Err(e) => return Err((s, e)),
+                Err(e) => return Err(e),
             };
-            Ok((s, (op, terminal)))
+            Ok((op, terminal))
         })
     }
     fn factor(&mut self) -> Result<Expr, String> {
@@ -414,7 +401,7 @@ impl Parser<'_> {
         self.lexeme(|s| {
             let mut expr = match s.unary_op() {
                 Ok((op, terminal)) => Expr::UnaryOp(op, terminal),
-                Err(e) => return Err((s, e)),
+                Err(e) => return Err(e),
             };
             while let Some(op) = s.peek() {
                 match op {
@@ -422,7 +409,7 @@ impl Parser<'_> {
                         s.next();
                         let rhs = match s.unary_op() {
                             Ok((op, terminal)) => Expr::UnaryOp(op, terminal),
-                            Err(e) => return Err((s, e)),
+                            Err(e) => return Err(e),
                         };
                         expr = Expr::BinaryOp(
                             match op {
@@ -437,7 +424,7 @@ impl Parser<'_> {
                     _ => break,
                 }
             }
-            Ok((s, expr))
+            Ok(expr)
         })
     }
     fn expr(&mut self) -> Result<Expr, String> {
@@ -532,7 +519,7 @@ mod parse_test {
     #[test]
     fn test_peek() {
         let mut parser = Parser::from("xyz");
-        assert_eq!(parser.peek(), Some(&'x'));
+        assert_eq!(parser.peek(), Some('x'));
         assert_eq!(parser.pos, 0);
     }
 
