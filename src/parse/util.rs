@@ -8,12 +8,22 @@ impl Parser<'_> {
             if let Some(lexeme) = self.lexeme_stack.last_mut() {
                 lexeme.1.push(c);
             }
-            self.pos += 1;
+            self.position.pos += 1;
+            self.position.column += 1;
+            if c == '\n' {
+                self.position.column = 0;
+                self.position.row += 1;
+            }
             Some(c)
         } else {
             let c = self.src.next();
             if let Some(c) = c {
-                self.pos += 1;
+                self.position.pos += 1;
+                self.position.column += 1;
+                if c == '\n' {
+                    self.position.column = 0;
+                    self.position.row += 1;
+                }
                 if let Some(lexeme) = self.lexeme_stack.last_mut() {
                     lexeme.1.push(c);
                 }
@@ -48,10 +58,10 @@ impl Parser<'_> {
                 self.next();
                 Ok(c)
             } else {
-                Err(format!("expected {c}, found {c2}"))
+                Err(self.make_error(format!("expected {c}, found {c2}")))
             }
         } else {
-            Err("unexpected end of file".to_string())
+            Err(self.make_error("unexpected end of file".to_string()))
         }
     }
     pub fn match_str<'a>(&mut self, string: &'a str) -> Result<&'a str, String> {
@@ -66,9 +76,9 @@ impl Parser<'_> {
     pub fn skip_whitespace(&mut self) {
         self.next_while(|c| c.is_ascii_whitespace() || c == '\n');
     }
-    pub fn expect_whitespace(&mut self) -> Result<(), &'static str> {
+    pub fn expect_whitespace(&mut self) -> Result<(), String> {
         if self.next_while(|c| c.is_ascii_whitespace()).is_empty() {
-            Err("expected whitespace")
+            Err(self.make_error("expected whitespace".to_string()))
         } else {
             Ok(())
         }
@@ -102,6 +112,19 @@ impl Parser<'_> {
             Ok(items)
         })
     }
+
+    pub fn synchronize(&mut self) {
+        self.next_while(|c| c != '\n');
+        self.next();
+        self.skip_whitespace();
+    }
+
+    pub fn make_error(&mut self, message: String) -> String {
+        let row = self.position.row;
+        let column = self.position.column;
+
+        format!("[{row}:{column}] {message}")
+    }
 }
 
 #[cfg(test)]
@@ -111,47 +134,47 @@ mod test {
     fn next() {
         let mut parser = Parser::from("xyz");
         assert_eq!(parser.next(), Some('x'));
-        assert_eq!(parser.pos, 1);
+        assert_eq!(parser.position.pos, 1);
         assert_eq!(parser.next(), Some('y'));
-        assert_eq!(parser.pos, 2);
+        assert_eq!(parser.position.pos, 2);
         assert_eq!(parser.next(), Some('z'));
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         assert_eq!(parser.next(), None);
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
     }
 
     #[test]
     fn peek() {
         let mut parser = Parser::from("xyz");
         assert_eq!(parser.peek(), Some('x'));
-        assert_eq!(parser.pos, 0);
+        assert_eq!(parser.position.pos, 0);
     }
     #[test]
     fn match_str() {
         let mut parser = Parser::from("xyz");
         assert_eq!(parser.match_str("xyz"), Ok("xyz"));
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         let mut parser = Parser::from("yyyy");
         assert_eq!(
             parser.match_str("xxxx"),
-            Err("expected x, found y".to_string())
+            Err("[0:0] expected x, found y".to_string())
         );
-        assert_eq!(parser.pos, 0);
+        assert_eq!(parser.position.pos, 0);
         let mut parser = Parser::from("xyz");
         assert_eq!(
             parser.match_str("xyzw"),
-            Err("unexpected end of file".to_string())
+            Err("[0:3] unexpected end of file".to_string())
         );
     }
 
     #[test]
     fn expect_whitespace() {
         let mut parser = Parser::from("xyz");
-        assert_eq!(parser.expect_whitespace(), Err("expected whitespace"));
-        assert_eq!(parser.pos, 0);
+        assert_eq!(parser.expect_whitespace(), Err(parser.make_error("expected whitespace".to_string())));
+        assert_eq!(parser.position.pos, 0);
         let mut parser = Parser::from("   xyz");
         assert_eq!(parser.expect_whitespace(), Ok(()));
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
     }
 
     #[test]
@@ -171,18 +194,61 @@ mod test {
             parser.match_to(&vec![("xyz", 1), ("abc", 2)]),
             Ok(&1)
         );
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         let mut parser = Parser::from("abc");
         assert_eq!(
             parser.match_to(&vec![("xyz", 1), ("abc", 2)]),
             Ok(&2)
         );
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         let mut parser = Parser::from("xyz");
         assert_eq!(
             parser.match_to(&vec![("abc", 1), ("def", 2)]),
             Err(())
         );
-        assert_eq!(parser.pos, 0);
+        assert_eq!(parser.position.pos, 0);
+    }
+
+    #[test]
+    fn row_and_column() {
+        let mut parser = Parser::from("xyz");
+        assert_eq!(parser.position.row, 0);
+        assert_eq!(parser.position.column, 0);
+        parser.next();
+        assert_eq!(parser.position.row, 0);
+        assert_eq!(parser.position.column, 1);
+        parser.next();
+        assert_eq!(parser.position.row, 0);
+        assert_eq!(parser.position.column, 2);
+        parser.next();
+        assert_eq!(parser.position.row, 0);
+        assert_eq!(parser.position.column, 3);
+        parser.next();
+        assert_eq!(parser.position.row, 0);
+        assert_eq!(parser.position.column, 3);
+        let mut parser = Parser::from("x\ny\nz");
+        assert_eq!(parser.position.row, 0);
+        assert_eq!(parser.position.column, 0);
+        parser.next();
+        assert_eq!(parser.position.row, 0);
+        assert_eq!(parser.position.column, 1);
+        parser.next();
+        assert_eq!(parser.position.row, 1);
+        assert_eq!(parser.position.column, 0);
+        parser.next();
+        assert_eq!(parser.position.row, 1);
+        assert_eq!(parser.position.column, 1);
+        parser.next();
+        assert_eq!(parser.position.row, 2);
+        assert_eq!(parser.position.column, 0);
+        parser.next();
+        assert_eq!(parser.position.row, 2);
+        assert_eq!(parser.position.column, 1);
+        parser.next();
+        assert_eq!(parser.position.row, 2);
+        assert_eq!(parser.position.column, 1);
+        parser.next();
+        assert_eq!(parser.position.row, 2);
+        assert_eq!(parser.position.column, 1);
     }
 }

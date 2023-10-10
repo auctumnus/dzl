@@ -28,7 +28,8 @@ pub enum Terminal {
     /// parenthesised expression
     Expr(Box<Expr>),
     Function(Function),
-    Block(Block)
+    Block(Block),
+    Array(Vec<Expr>),
 }
 
 
@@ -230,10 +231,21 @@ impl Parser<'_> {
         })
     }
 
+    pub fn array(&mut self) -> Result<Vec<Expr>, String> {
+        self.lexeme(|s| {
+            s.match_char('[')?;
+            let array = s.delimited(',', Parser::expr)?;
+            s.match_char(']')?;
+            Ok(array)
+        })
+    }
+
     pub fn terminal(&mut self) -> Result<Terminal, String> {
         self.lexeme(|s| {
             let terminal = 
-            if let Ok(block) = s.block() {
+            if let Ok(array) = s.array() {
+                Terminal::Array(array)
+            } else if let Ok(block) = s.block() {
                 Terminal::Block(block)
             }else  if let Ok(function) = s.function_definition() {
                 Terminal::Function(function)
@@ -250,16 +262,17 @@ impl Parser<'_> {
             } else if let Ok(boolean) = s.boolean() {
                 Terminal::Bool(boolean)
             } else {
-                let pos = s.pos;
                 if let Some(c) = s.peek() {
-                    return Err(format!("unexpected character '{c}' at {pos}"));
+                    return Err(s.make_error(format!("unexpected character '{c}'")));
                 }
-                return Err(format!("unexpected end of file at {pos}"));
+                return Err(s.make_error("unexpected end of file".to_string()));
             };
             s.skip_whitespace();
             Ok(terminal)
         })
     }
+
+    
 }
 
 #[cfg(test)]
@@ -270,7 +283,7 @@ mod test {
     fn ident() {
         let mut parser = Parser::from("xyz");
         assert_eq!(parser.ident().map(|i| parser.rodeo.resolve(&i)), Ok("xyz"));
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
     }
@@ -279,7 +292,7 @@ mod test {
     fn unicode_ident() {
         let mut parser = Parser::from("ಠ_ಠ");
         assert_eq!(parser.ident().map(|i| parser.rodeo.resolve(&i)), Ok("ಠ_ಠ"));
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
     }
@@ -288,7 +301,7 @@ mod test {
     fn int() {
         let mut parser = Parser::from("123");
         assert_eq!(parser.int(), Ok(123));
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
 
@@ -305,7 +318,7 @@ mod test {
     fn float() {
         let mut parser = Parser::from("123.456");
         assert_eq!(parser.float(), Ok(123.456));
-        assert_eq!(parser.pos, 7);
+        assert_eq!(parser.position.pos, 7);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
 
@@ -319,7 +332,7 @@ mod test {
             parser.string().map(|i| parser.rodeo.resolve(&i)),
             Ok("hello world")
         );
-        assert_eq!(parser.pos, 13);
+        assert_eq!(parser.position.pos, 13);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
 
@@ -340,7 +353,7 @@ mod test {
                 Box::new(Expr::Terminal(Terminal::Int(2)))
             ))
         );
-        assert_eq!(parser.pos, 7);
+        assert_eq!(parser.position.pos, 7);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
     }

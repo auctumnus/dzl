@@ -2,10 +2,12 @@ use crate::parse::Parser;
 
 const DEFAULT_LEXEME_CAPACITY: usize = 32;
 
+
+
 impl Parser<'_> {
     fn start_lexeme(&mut self) {
         self.lexeme_stack
-            .push((self.pos, String::with_capacity(DEFAULT_LEXEME_CAPACITY)));
+            .push((self.position, String::with_capacity(DEFAULT_LEXEME_CAPACITY)));
     }
     /// Aborts the current lexeme, rewinding the parser to the start of the
     /// lexeme.
@@ -15,7 +17,7 @@ impl Parser<'_> {
             .pop()
             .expect("tried to abort empty lexeme stack");
         self.buffer.extend(lexeme.chars().rev());
-        self.pos = start;
+        self.position = start;
     }
     /// Finishes the current lexeme, returning the lexeme as a string.
     fn finish_lexeme(&mut self) -> String {
@@ -60,7 +62,7 @@ mod test {
         assert_eq!(parser.next(), Some('y'));
         assert_eq!(parser.next(), Some('z'));
         assert_eq!(parser.finish_lexeme(), "xyz");
-        assert_eq!(parser.pos, 3);
+        assert_eq!(parser.position.pos, 3);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
     }
@@ -73,7 +75,7 @@ mod test {
         assert_eq!(parser.next(), Some('y'));
         assert_eq!(parser.next(), Some('z'));
         parser.abort_lexeme();
-        assert_eq!(parser.pos, 0);
+        assert_eq!(parser.position.pos, 0);
         assert_eq!(parser.buffer, vec!['z', 'y', 'x']);
         assert_eq!(parser.lexeme_stack, Vec::new());
         assert_eq!(parser.next(), Some('x'));

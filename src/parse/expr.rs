@@ -1,3 +1,5 @@
+use std::hint::unreachable_unchecked;
+
 use lasso::Spur;
 
 use super::{terminal::{Terminal, Block}, types::Type, Parser};
@@ -60,7 +62,7 @@ pub enum Expr {
     // `expr op expr`
     BinaryOp(BinaryOp, Box<Expr>, Box<Expr>),
     /// `op expr`
-    UnaryOp(UnaryOp, Terminal),
+    UnaryOp(UnaryOp, Box<Expr>),
     /// `expr(expr, expr, ...)`
     Call(Spur, Vec<Expr>),
     /// `expr[index]`
@@ -72,9 +74,7 @@ pub enum Expr {
     /// i.e. is the average block <= 8 statements?
     If(Box<Expr>, Block, Option<Block>),
     While(Box<Expr>, Block),
-    Continue,
-    Break(Option<Box<Expr>>),
-    Return(Option<Box<Expr>>),
+    
     // TODO: for loops
     // i like rust's for loops so i probably need to figure out the whole pattern
     // business
@@ -96,9 +96,45 @@ pub enum Stmt {
     Statement(Expr),
     /// `expr`
     Expr(Expr),
+    Continue,
+    Break(Option<Box<Expr>>),
+    Return(Option<Box<Expr>>),
 }
 
 impl Parser<'_> {
+    fn member(&mut self) -> Result<Expr, String> {
+        self.lexeme(|s| {
+            let expr = s.terminal().map(Expr::Terminal)?;
+            s.skip_whitespace();
+            s.match_char('.')?;
+            s.skip_whitespace();
+            let member = s.ident()?;
+            Ok(Expr::Member(Box::new(expr), member))
+        }).or_else(|_: String| self.terminal().map(Expr::Terminal))
+    }
+    fn index(&mut self) -> Result<Expr, String> {
+        self.lexeme(|s| {
+            let expr = s.member()?;
+            s.skip_whitespace();
+            s.match_char('[')?;
+            s.skip_whitespace();
+            let index = s.expr()?;
+            s.skip_whitespace();
+            s.match_char(']')?;
+            Ok(Expr::Index(Box::new(expr), Box::new(index)))
+        }).or_else(|_: String| self.member())
+    }
+    fn call(&mut self) -> Result<Expr, String> {
+        self.lexeme(|s| {
+            let ident = s.ident()?;
+            s.skip_whitespace();
+            s.match_char('(')?;
+            let args = s.delimited(',', Parser::expr)?;
+            s.match_char(')')?;
+            Ok(Expr::Call(ident, args))
+        }).or_else(|_: String| self.index())
+    }
+
     fn unary_op(&mut self) -> Result<UnaryOp, String> {
         self.lexeme(|s| {
             let op = match s.next() {
@@ -123,11 +159,11 @@ impl Parser<'_> {
     fn unary(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
             let op = s.unary_op().ok();
-            let terminal = s.terminal()?;
+            let expr = s.call()?;
             if let Some(op) = op {
-                Ok(Expr::UnaryOp(op, terminal))
+                Ok(Expr::UnaryOp(op, Box::new(expr)))
             } else {
-                Ok(Expr::Terminal(terminal))
+                Ok(expr)
             }
         })
     }
@@ -372,7 +408,44 @@ impl Parser<'_> {
     }
     pub fn statement(&mut self) -> Result<Stmt, String> {
         self.lexeme(|s| {
-            let statement = if let Ok(declaration) = s.declaration() {
+            let statement = 
+            if let Ok(keyword) = s.match_to(&vec![("return", 0), ("break", 1), ("continue", 2)]) {
+                match keyword {
+                    0 => {
+                        s.skip_whitespace();
+                        let expr = if let Some(';') = s.peek() {
+                            None
+                        } else {
+                            Some(Box::new(s.expr()?))
+                        };
+                        if let Some(';') = s.peek() {
+                            s.next();
+                        }
+                        Ok(Stmt::Return(expr))
+                    }
+                    1 => {
+                        s.skip_whitespace();
+                        let expr = if let Some(';') = s.peek() {
+                            None
+                        } else {
+                            Some(Box::new(s.expr()?))
+                        };
+                        if let Some(';') = s.peek() {
+                            s.next();
+                        }
+                        Ok(Stmt::Break(expr))
+                    }
+                    2 => {
+                        if let Some(';') = s.peek() {
+                            s.next();
+                        }
+                        Ok(Stmt::Continue)
+                    }
+                    // SAFETY: the match_to call above ensures that the keyword is one of the
+                    // three keywords above
+                    _ => unsafe { unreachable_unchecked() }
+                }
+            } else if let Ok(declaration) = s.declaration() {
                 if let Some(';') = s.peek() {
                     s.next();
                 }
@@ -768,12 +841,12 @@ mod test {
         let mut parser = Parser::from("-1");
         assert_eq!(
             parser.expr(),
-            Ok(Expr::UnaryOp(UnaryOp::Neg, Terminal::Int(1)))
+            Ok(Expr::UnaryOp(UnaryOp::Neg, Box::new(Expr::Terminal(Terminal::Int(1)))))
         );
         let mut parser = Parser::from("!1");
         assert_eq!(
             parser.expr(),
-            Ok(Expr::UnaryOp(UnaryOp::Not, Terminal::Int(1)))
+            Ok(Expr::UnaryOp(UnaryOp::Not, Box::new(Expr::Terminal(Terminal::Int(1)))))
         );
     }
     // largely for code coverage
@@ -783,5 +856,45 @@ mod test {
         assert!(Parser::from("").unary_op().is_err());
         assert!(Parser::from("!").equal_op().is_err());
         assert!(Parser::from("{ 1 = 2 }").block().is_err());
+    }
+
+    #[test]
+    fn index() {
+        let mut parser = Parser::from("x[0]");
+        assert_eq!(
+            parser.expr(),
+            Ok(Expr::Index(
+                Box::new(Expr::Terminal(Terminal::Ident(
+                    parser.rodeo.get_or_intern("x")
+                ))),
+                Box::new(Expr::Terminal(Terminal::Int(0)))
+            ))
+        );
+    }
+
+    #[test]
+    fn call() {
+        let mut parser = Parser::from("x(0)");
+        assert_eq!(
+            parser.expr(),
+            Ok(Expr::Call(
+                parser.rodeo.get_or_intern("x"),
+                vec![Expr::Terminal(Terminal::Int(0))]
+            ))
+        );
+    }
+
+    #[test]
+    fn member() {
+        let mut parser = Parser::from("x.y");
+        assert_eq!(
+            parser.expr(),
+            Ok(Expr::Member(
+                Box::new(Expr::Terminal(Terminal::Ident(
+                    parser.rodeo.get_or_intern("x")
+                ))),
+                parser.rodeo.get_or_intern("y")
+            ))
+        );
     }
 }
