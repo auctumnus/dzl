@@ -2,6 +2,15 @@ use lasso::Spur;
 
 use super::expr::Expr;
 use super::Parser;
+use super::types::Type;
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Function {
+    generic: Vec<Type>,
+    args: Vec<(Spur, Option<Type>)>,
+    return_type: Option<Type>,
+    body: Box<Expr>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Terminal {
@@ -12,11 +21,16 @@ pub enum Terminal {
     Bool(bool),
     /// parenthesised expression
     Expr(Box<Expr>),
+    Function(Function),
 }
+
+
 
 const RESERVED_NAMES: &[&str] = &[
     "let", "const", "if", "else", "while", "continue", "break", "return", "true", "false", "match",
     "not", "and", "or", "xor", "shl", "shr", "import", "export", "as", "from", "struct", "enum",
+    "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32",
+    "float64", "string", "bool", "void"
 ];
 
 impl Parser<'_> {
@@ -28,9 +42,10 @@ impl Parser<'_> {
         })
     }
     pub fn ident(&mut self) -> Result<Spur, String> {
-        self.lexeme(|s| match s.peek() {
+        self.lexeme(|s| match s.next() {
             Some(c) if unicode_ident::is_xid_start(c) || c == '$' || c == '_' => {
                 let identifier = s.next_while(|c| unicode_ident::is_xid_continue(c) || c == '_');
+                let identifier = format!("{c}{identifier}");
                 if RESERVED_NAMES.contains(&identifier.as_str()) {
                     return Err(format!("identifier '{identifier}' is reserved"));
                 }
@@ -93,9 +108,100 @@ impl Parser<'_> {
             Ok(expr)
         })
     }
+
+    fn function_argument(&mut self) -> Result<(Spur, Option<Type>), String> {
+        self.lexeme(|s| {
+            let ident = s.ident()?;
+            s.skip_whitespace();
+            let r#type = if let Some(':') = s.peek() {
+                s.next();
+                s.skip_whitespace();
+                Some(s.r#type()?)
+            } else {
+                None
+            };
+            Ok((ident, r#type))
+        })
+    }
+
+    fn function_arglist(&mut self) -> Result<Vec<(Spur, Option<Type>)>, String> {
+        self.lexeme(|s| {
+            s.match_char('(')?;
+            let args = s.delimited(',', Parser::function_argument)?;
+            s.match_char(')')?;
+            Ok(args)
+        })
+    }
+
+    fn short_function_definition(&mut self) -> Result<Function, String> {
+        self.lexeme(|s| {
+            let generic = if let Some('<') = s.peek() {
+                s.generic()?
+            } else {
+                Vec::new()
+            };
+            let args = s.function_arglist()?;
+            s.skip_whitespace();
+            let return_type = s.function_return_type().ok();
+            s.skip_whitespace();
+            s.match_str("=>")?;
+            s.skip_whitespace();
+            let body = Box::new(s.expr()?);
+            // if let Expr::Block(_) = expr {
+            //     return Err("expected non-block expression, found block".to_string());
+            // }
+            let function = Function {
+                generic,
+                args,
+                return_type,
+                body,
+            };
+            Ok(function)
+        })
+    }
+
+    fn long_function_definition(&mut self) -> Result<Function, String> {
+        self.lexeme(|s| {
+            let generic = if let Some('<') = s.peek() {
+                s.generic()?
+            } else {
+                Vec::new()
+            };
+            let args = s.function_arglist()?;
+            s.skip_whitespace();
+            let return_type = s.function_return_type()?;
+            s.skip_whitespace();
+            s.match_str("=>")?;
+            s.skip_whitespace();
+            let body = Box::new(s.expr()?);
+            let function = Function {
+                generic,
+                args,
+                return_type: Some(return_type),
+                body,
+            };
+            Ok(function)
+        })
+    }
+
+    fn function_definition(&mut self) -> Result<Function, String> {
+        self.lexeme(|s| {
+            if let Ok(function) = s.long_function_definition() {
+                return Ok(function);
+            }
+            if let Ok(function) = s.short_function_definition() {
+                return Ok(function);
+            }
+            Err("expected function definition".to_string())
+        })
+    }
+
     pub fn terminal(&mut self) -> Result<Terminal, String> {
         self.lexeme(|s| {
-            let terminal = if let Ok(ident) = s.ident() {
+            let terminal = 
+            if let Ok(function) = s.function_definition() {
+                Terminal::Function(function)
+            } else if let Ok(ident) = s.ident() {
                 Terminal::Ident(ident)
             } else if let Ok(int) = s.int() {
                 Terminal::Int(int)
@@ -224,6 +330,97 @@ mod test {
         assert_eq!(
             parser.terminal(),
             Ok(Terminal::String(parser.rodeo.get_or_intern("hello world")))
+        );
+    }
+
+    #[test]
+    fn function() {
+        let mut parser = Parser::from("() => 1");
+        assert_eq!(
+            parser.function_definition(),
+            Ok(Function {
+                generic: Vec::new(),
+                args: Vec::new(),
+                return_type: None,
+                body: Box::new(Expr::Terminal(Terminal::Int(1)))
+            })
+        );
+        let mut parser = Parser::from("(a) => 1");
+        assert_eq!(
+            parser.function_definition(),
+            Ok(Function {
+                generic: Vec::new(),
+                args: vec![(
+                    parser.rodeo.get_or_intern("a"),
+                    None,
+                )],
+                return_type: None,
+                body: Box::new(Expr::Terminal(Terminal::Int(1)))
+            })
+        );
+        let mut parser = Parser::from("(a: number) => 1");
+        assert_eq!(
+            parser.function_definition(),
+            Ok(Function {
+                generic: Vec::new(),
+                args: vec![(
+                    parser.rodeo.get_or_intern("a"),
+                    Some(Type::Number),
+                )],
+                return_type: None,
+                body: Box::new(Expr::Terminal(Terminal::Int(1)))
+            })
+        );
+        let mut parser = Parser::from("<T>(a: number) => 1");
+        assert_eq!(
+            parser.function_definition(),
+            Ok(Function {
+                generic: vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())],
+                args: vec![(
+                    parser.rodeo.get_or_intern("a"),
+                    Some(Type::Number),
+                )],
+                return_type: None,
+                body: Box::new(Expr::Terminal(Terminal::Int(1)))
+            })
+        );
+        let mut parser = Parser::from("(a: number, b: number) => 1");
+        assert_eq!(
+            parser.function_definition(),
+            Ok(Function {
+                generic: Vec::new(),
+                args: vec![
+                    (
+                        parser.rodeo.get_or_intern("a"),
+                        Some(Type::Number),
+                    ),
+                    (
+                        parser.rodeo.get_or_intern("b"),
+                        Some(Type::Number),
+                    ),
+                ],
+                return_type: None,
+                body: Box::new(Expr::Terminal(Terminal::Int(1)))
+            })
+        );
+        let mut parser = Parser::from("(a: number, b: number) -> number => 1");
+        assert_eq!(
+            parser.function_definition(),
+            Ok(Function {
+                generic: Vec::new(),
+                args: vec![
+                    (
+                        parser.rodeo.get_or_intern("a"),
+                        Some(Type::Number),
+                    ),
+                    (
+                        parser.rodeo.get_or_intern("b"),
+                        Some(Type::Number),
+                    ),
+                ],
+                return_type: Some(Type::Number),
+                body: Box::new(Expr::Terminal(Terminal::Int(1)))
+            })
         );
     }
 }

@@ -20,7 +20,9 @@ impl Parser<'_> {
     /// Finishes the current lexeme, returning the lexeme as a string.
     fn finish_lexeme(&mut self) -> String {
         let (_, lexeme) = self.lexeme_stack.pop().unwrap();
-        if self.lexeme_stack.is_empty() {
+        if let Some((_, lexeme2)) = self.lexeme_stack.last_mut() {
+            lexeme2.push_str(&lexeme);
+        } else {
             self.buffer.clear();
         }
         lexeme

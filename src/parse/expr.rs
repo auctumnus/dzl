@@ -366,6 +366,7 @@ impl Parser<'_> {
             let ident = s.ident()?;
             s.skip_whitespace();
             let op = s.assignment_operator()?;
+            println!("assignment operator: {:?}", op);
             s.skip_whitespace();
             let expr = s.expr()?;
             Ok(Stmt::Assignment(ident, op, expr))
@@ -542,6 +543,17 @@ mod test {
             ))
         );
 
+        let mut parser = Parser::from("let x: T = 0;");
+        assert_eq!(
+            parser.statement(),
+            Ok(Stmt::Declaration(
+                DeclarationKind::Let,
+                Some(Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())),
+                parser.rodeo.get_or_intern("x"),
+                Expr::Terminal(Terminal::Int(0))
+            ))
+        );
+
         assert!(Parser::from("let x").statement().is_err());
     }
     #[test]
@@ -647,7 +659,9 @@ mod test {
             ))
         );
 
-        assert!(Parser::from("x =").statement().is_err());
+        println!("{:#?}", Parser::from("x =").statement());
+
+        assert!(Parser::from("x =").assignment().is_err());
         assert!(Parser::from("+").assignment_operator().is_err());
         assert!(Parser::from("").assignment_operator().is_err());
         assert!(Parser::from("a").assignment_operator().is_err());
@@ -766,7 +780,7 @@ mod test {
     }
     // largely for code coverage
     #[test]
-    fn failure_states() {
+    fn weird_failure_states() {
         assert!(Parser::from("-").expr().is_err());
         assert!(Parser::from("").unary_op().is_err());
         assert!(Parser::from("!").equal_op().is_err());

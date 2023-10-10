@@ -57,21 +57,14 @@ impl Parser<'_> {
     pub fn match_str<'a>(&mut self, string: &'a str) -> Result<&'a str, String> {
         self.lexeme(|s| {
             for c in string.chars() {
-                if let Some(c2) = s.peek() {
-                    if c != c2 {
-                        return Err(format!("expected {c}, found {c2}"));
-                    }
-                    s.next();
-                } else {
-                    return Err("unexpected end of file".to_string());
-                }
+                s.match_char(c)?;
             }
             Ok(string)
         })
     }
 
     pub fn skip_whitespace(&mut self) {
-        self.next_while(|c| c.is_ascii_whitespace());
+        self.next_while(|c| c.is_ascii_whitespace() || c == '\n');
     }
     pub fn expect_whitespace(&mut self) -> Result<(), &'static str> {
         if self.next_while(|c| c.is_ascii_whitespace()).is_empty() {
@@ -83,11 +76,31 @@ impl Parser<'_> {
 
     pub fn match_to<'a, T>(&mut self, options: &'a Vec<(&'static str, T)>) -> Result<&'a T, ()> {
         for (string, value) in options {
-            if let Ok(_) = self.match_str(string) {
+            if self.match_str(string).is_ok() {
                 return Ok(value);
             }
         }
         Err(())
+    }
+
+    pub fn delimited<T>(&mut self, by: char, mut f: impl FnMut(&mut Self) -> Result<T, String>) -> Result<Vec<T>, String> {
+        self.lexeme(|s| {
+            let mut items = Vec::new();
+            loop {
+                if let Ok(item) = f(s) {
+                    items.push(item);
+                } else {
+                    break;
+                }
+                if s.peek() == Some(by) {
+                    s.next();
+                    s.skip_whitespace();
+                } else {
+                    break;
+                }
+            }
+            Ok(items)
+        })
     }
 }
 
@@ -149,5 +162,27 @@ mod test {
         parser.next();
         parser.next();
         assert!(parser.at_end());
+    }
+
+    #[test]
+    fn match_to() {
+        let mut parser = Parser::from("xyz");
+        assert_eq!(
+            parser.match_to(&vec![("xyz", 1), ("abc", 2)]),
+            Ok(&1)
+        );
+        assert_eq!(parser.pos, 3);
+        let mut parser = Parser::from("abc");
+        assert_eq!(
+            parser.match_to(&vec![("xyz", 1), ("abc", 2)]),
+            Ok(&2)
+        );
+        assert_eq!(parser.pos, 3);
+        let mut parser = Parser::from("xyz");
+        assert_eq!(
+            parser.match_to(&vec![("abc", 1), ("def", 2)]),
+            Err(())
+        );
+        assert_eq!(parser.pos, 0);
     }
 }
