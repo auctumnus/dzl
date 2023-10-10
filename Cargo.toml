@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 lasso = { version = "0.7.2", features=["ahasher"] }
+lazy_static = "1.4.0"
+smallvec = { version = "1.11.1", features = ["const_generics"] }
 unicode-ident = "1.0.12"

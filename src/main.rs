@@ -2,7 +2,6 @@
 mod parse;
 
 fn main() {
-    let mut parser = parse::Parser::from("if x { 1 1 }");
-    let ast = parser.if_expr();
+    let ast = parse::Parser::from("let x").statement();
     println!("{ast:#?}");
 }
