@@ -1,15 +1,21 @@
 use lasso::Spur;
 
-use super::expr::Expr;
+use super::expr::{Expr, Stmt};
 use super::Parser;
 use super::types::Type;
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Block {
+    pub statements: Vec<Stmt>,
+    pub expr: Option<Box<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Function {
-    generic: Vec<Type>,
-    args: Vec<(Spur, Option<Type>)>,
-    return_type: Option<Type>,
-    body: Box<Expr>,
+    pub generic: Vec<Type>,
+    pub args: Vec<(Spur, Option<Type>)>,
+    pub return_type: Option<Type>,
+    pub body: Box<Expr>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -22,6 +28,7 @@ pub enum Terminal {
     /// parenthesised expression
     Expr(Box<Expr>),
     Function(Function),
+    Block(Block)
 }
 
 
@@ -173,12 +180,12 @@ impl Parser<'_> {
             s.skip_whitespace();
             s.match_str("=>")?;
             s.skip_whitespace();
-            let body = Box::new(s.expr()?);
+            let body = s.block()?;
             let function = Function {
                 generic,
                 args,
                 return_type: Some(return_type),
-                body,
+                body: Box::new(Expr::Terminal(Terminal::Block(body))),
             };
             Ok(function)
         })
@@ -196,10 +203,39 @@ impl Parser<'_> {
         })
     }
 
+    pub fn block(&mut self) -> Result<Block, String> {
+        self.lexeme(|s| {
+            s.match_char('{')?;
+            s.skip_whitespace();
+            let mut stmts = Vec::new();
+            while let Ok(stmt) = s.statement() {
+                stmts.push(stmt);
+                s.skip_whitespace();
+            }
+            let expr = if let Some(Stmt::Expr(_)) = stmts.last() {
+                match stmts.pop().unwrap() {
+                    Stmt::Expr(e) => Some(Box::new(e)),
+                    _ => unreachable!(),
+                }
+            } else {
+                None
+            };
+            s.skip_whitespace();
+            s.match_char('}')?;
+            s.skip_whitespace();
+            Ok(Block {
+                statements: stmts,
+                expr,
+            })
+        })
+    }
+
     pub fn terminal(&mut self) -> Result<Terminal, String> {
         self.lexeme(|s| {
             let terminal = 
-            if let Ok(function) = s.function_definition() {
+            if let Ok(block) = s.block() {
+                Terminal::Block(block)
+            }else  if let Ok(function) = s.function_definition() {
                 Terminal::Function(function)
             } else if let Ok(ident) = s.ident() {
                 Terminal::Ident(ident)
@@ -229,7 +265,7 @@ impl Parser<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parse::expr::BinaryOp;
+    use crate::parse::expr::{BinaryOp, Stmt, DeclarationKind};
     #[test]
     fn ident() {
         let mut parser = Parser::from("xyz");
@@ -334,6 +370,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn function() {
         let mut parser = Parser::from("() => 1");
         assert_eq!(
@@ -420,6 +457,28 @@ mod test {
                 ],
                 return_type: Some(Type::Number),
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
+            })
+        );
+    }
+
+    #[test]
+    fn asdf() {
+        let mut parser = Parser::from(r"() -> number => {
+            let a = 1;
+            a
+        }");
+        assert_eq!(
+            parser.function_definition(),
+            Ok(Function {
+                generic: Vec::new(),
+                args: Vec::new(),
+                return_type: Some(Type::Number),
+                body: Box::new(Expr::Terminal(Terminal::Block(Block {
+                    statements: vec![
+                        Stmt::Declaration(DeclarationKind::Let, None, parser.rodeo.get_or_intern("a"),  Expr::Terminal(Terminal::Int(1))),
+                    ],
+                    expr: Some(Box::new(Expr::Terminal(Terminal::Ident(parser.rodeo.get_or_intern("a"))))),
+                })))
             })
         );
     }

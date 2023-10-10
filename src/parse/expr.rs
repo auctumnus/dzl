@@ -1,6 +1,6 @@
 use lasso::Spur;
 
-use super::{terminal::Terminal, types::Type, Parser};
+use super::{terminal::{Terminal, Block}, types::Type, Parser};
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum BinaryOp {
@@ -70,9 +70,8 @@ pub enum Expr {
     /// `{ stmt; stmt; ...; (expr) }`
     /// TODO: consider if Vec<Stmt> should be a SmallVec
     /// i.e. is the average block <= 8 statements?
-    Block(Vec<Stmt>, Option<Box<Expr>>),
-    If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
-    While(Box<Expr>, Box<Expr>),
+    If(Box<Expr>, Block, Option<Block>),
+    While(Box<Expr>, Block),
     Continue,
     Break(Option<Box<Expr>>),
     Return(Option<Box<Expr>>),
@@ -366,7 +365,6 @@ impl Parser<'_> {
             let ident = s.ident()?;
             s.skip_whitespace();
             let op = s.assignment_operator()?;
-            println!("assignment operator: {:?}", op);
             s.skip_whitespace();
             let expr = s.expr()?;
             Ok(Stmt::Assignment(ident, op, expr))
@@ -375,8 +373,14 @@ impl Parser<'_> {
     pub fn statement(&mut self) -> Result<Stmt, String> {
         self.lexeme(|s| {
             let statement = if let Ok(declaration) = s.declaration() {
+                if let Some(';') = s.peek() {
+                    s.next();
+                }
                 Ok(declaration)
             } else if let Ok(assignment) = s.assignment() {
+                if let Some(';') = s.peek() {
+                    s.next();
+                }
                 Ok(assignment)
             } else {
                 let expr = s.expr()?;
@@ -391,27 +395,7 @@ impl Parser<'_> {
             statement
         })
     }
-    fn block(&mut self) -> Result<Expr, String> {
-        self.lexeme(|s| {
-            s.match_char('{')?;
-            s.skip_whitespace();
-            let mut stmts = Vec::new();
-            while let Ok(stmt) = s.statement() {
-                stmts.push(stmt);
-            }
-            let expr = if let Some(Stmt::Expr(_)) = stmts.last() {
-                match stmts.pop().unwrap() {
-                    Stmt::Expr(e) => Some(Box::new(e)),
-                    _ => unreachable!(),
-                }
-            } else {
-                None
-            };
-            s.match_char('}')?;
-            s.skip_whitespace();
-            Ok(Expr::Block(stmts, expr))
-        })
-    }
+    
     pub fn if_expr(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
             s.match_str("if")?;
@@ -424,11 +408,11 @@ impl Parser<'_> {
                 s.match_str("else")?;
                 s.skip_whitespace();
                 let expr = s.block()?;
-                Some(Box::new(expr))
+                Some(expr)
             } else {
                 None
             };
-            Ok(Expr::If(Box::new(cond), Box::new(then), else_))
+            Ok(Expr::If(Box::new(cond), then, else_))
         })
     }
 }
@@ -659,8 +643,6 @@ mod test {
             ))
         );
 
-        println!("{:#?}", Parser::from("x =").statement());
-
         assert!(Parser::from("x =").assignment().is_err());
         assert!(Parser::from("+").assignment_operator().is_err());
         assert!(Parser::from("").assignment_operator().is_err());
@@ -675,10 +657,10 @@ mod test {
                 Box::new(Expr::Terminal(Terminal::Ident(
                     parser.rodeo.get_or_intern("x")
                 ))),
-                Box::new(Expr::Block(
-                    vec![],
-                    Some(Box::new(Expr::Terminal(Terminal::Int(1))))
-                )),
+                Block {
+                    statements: vec![],
+                    expr: Some(Box::new(Expr::Terminal(Terminal::Int(1))))
+                },
                 None
             ))
         );
@@ -688,10 +670,25 @@ mod test {
         let mut parser = Parser::from("{ 1; }");
         assert_eq!(
             parser.block(),
-            Ok(Expr::Block(
-                vec![Stmt::Statement(Expr::Terminal(Terminal::Int(1)))],
-                None
-            ))
+            Ok(Block {
+                statements: vec![Stmt::Statement(Expr::Terminal(Terminal::Int(1)))],
+                expr: None
+            })
+        );
+
+        let mut parser = Parser::from(r"{
+            1;
+            2; 
+        }");
+        assert_eq!(
+            parser.block(),
+            Ok(Block {
+                statements: vec![
+                    Stmt::Statement(Expr::Terminal(Terminal::Int(1))),
+                    Stmt::Statement(Expr::Terminal(Terminal::Int(2)))
+                ],
+                expr: None
+            })
         );
     }
     #[test]
@@ -722,14 +719,15 @@ mod test {
                 Box::new(Expr::Terminal(Terminal::Ident(
                     parser.rodeo.get_or_intern("x")
                 ))),
-                Box::new(Expr::Block(
-                    vec![],
-                    Some(Box::new(Expr::Terminal(Terminal::Int(1))))
-                )),
-                Some(Box::new(Expr::Block(
-                    vec![],
-                    Some(Box::new(Expr::Terminal(Terminal::Int(2))))
-                )))
+                Block {
+                    statements: vec![],
+                    expr: Some(Box::new(Expr::Terminal(Terminal::Int(1))))
+                },
+                Some(Block {
+                    statements: vec![],
+                    expr: Some(Box::new(Expr::Terminal(Terminal::Int(2))))
+                }),
+                
             ))
         );
     }
