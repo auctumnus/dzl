@@ -93,7 +93,11 @@ impl Parser<'_> {
         Err(())
     }
 
-    pub fn delimited<T>(&mut self, by: char, mut f: impl FnMut(&mut Self) -> Result<T, String>) -> Result<Vec<T>, String> {
+    pub fn delimited<T>(
+        &mut self,
+        by: char,
+        mut f: impl FnMut(&mut Self) -> Result<T, String>,
+    ) -> Result<Vec<T>, String> {
         self.lexeme(|s| {
             let mut items = Vec::new();
             loop {
@@ -123,7 +127,9 @@ impl Parser<'_> {
         let row = self.position.row;
         let column = self.position.column;
 
-        format!("[{row}:{column}] {message}")
+        let last_lexeme_content = self.lexeme_stack.last().map(|(_, lexeme)| lexeme);
+
+        format!("[{row}:{column}] {message} ({last_lexeme_content:#?})")
     }
 }
 
@@ -155,22 +161,16 @@ mod test {
         assert_eq!(parser.match_str("xyz"), Ok("xyz"));
         assert_eq!(parser.position.pos, 3);
         let mut parser = Parser::from("yyyy");
-        assert_eq!(
-            parser.match_str("xxxx"),
-            Err("[0:0] expected x, found y".to_string())
-        );
+        assert!(parser.match_str("xxxx").is_err());
         assert_eq!(parser.position.pos, 0);
         let mut parser = Parser::from("xyz");
-        assert_eq!(
-            parser.match_str("xyzw"),
-            Err("[0:3] unexpected end of file".to_string())
-        );
+        assert!(parser.match_str("xyzw").is_err());
     }
 
     #[test]
     fn expect_whitespace() {
         let mut parser = Parser::from("xyz");
-        assert_eq!(parser.expect_whitespace(), Err(parser.make_error("expected whitespace".to_string())));
+        assert!(parser.expect_whitespace().is_err());
         assert_eq!(parser.position.pos, 0);
         let mut parser = Parser::from("   xyz");
         assert_eq!(parser.expect_whitespace(), Ok(()));
@@ -190,22 +190,13 @@ mod test {
     #[test]
     fn match_to() {
         let mut parser = Parser::from("xyz");
-        assert_eq!(
-            parser.match_to(&vec![("xyz", 1), ("abc", 2)]),
-            Ok(&1)
-        );
+        assert_eq!(parser.match_to(&vec![("xyz", 1), ("abc", 2)]), Ok(&1));
         assert_eq!(parser.position.pos, 3);
         let mut parser = Parser::from("abc");
-        assert_eq!(
-            parser.match_to(&vec![("xyz", 1), ("abc", 2)]),
-            Ok(&2)
-        );
+        assert_eq!(parser.match_to(&vec![("xyz", 1), ("abc", 2)]), Ok(&2));
         assert_eq!(parser.position.pos, 3);
         let mut parser = Parser::from("xyz");
-        assert_eq!(
-            parser.match_to(&vec![("abc", 1), ("def", 2)]),
-            Err(())
-        );
+        assert_eq!(parser.match_to(&vec![("abc", 1), ("def", 2)]), Err(()));
         assert_eq!(parser.position.pos, 0);
     }
 

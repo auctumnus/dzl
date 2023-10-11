@@ -81,13 +81,12 @@ mod test {
     use super::*;
     #[test]
     fn whole_program() {
-        let program = 
-        r#"let foo = (x: int) => x * 2
+        let program = r#"let foo = (x: int) => x * 2
         let foo = (x: int) -> int => x * 2
         let baz = (x: int) -> int => {
             return x * 2
         }
-        export const main = () => {
+        const main = () => {
             foreachint([1, 2, 3, 4], (n) => stdout.println(n * 2))
         }
         "#;

@@ -1,8 +1,8 @@
 use lasso::Spur;
 
 use super::expr::{Expr, Stmt};
-use super::Parser;
 use super::types::Type;
+use super::Parser;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Block {
@@ -32,13 +32,11 @@ pub enum Terminal {
     Array(Vec<Expr>),
 }
 
-
-
 const RESERVED_NAMES: &[&str] = &[
     "let", "const", "if", "else", "while", "continue", "break", "return", "true", "false", "match",
     "not", "and", "or", "xor", "shl", "shr", "import", "export", "as", "from", "struct", "enum",
-    "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32",
-    "float64", "string", "bool", "void"
+    "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64",
+    "string", "bool", "void",
 ];
 
 impl Parser<'_> {
@@ -242,12 +240,11 @@ impl Parser<'_> {
 
     pub fn terminal(&mut self) -> Result<Terminal, String> {
         self.lexeme(|s| {
-            let terminal = 
-            if let Ok(array) = s.array() {
+            let terminal = if let Ok(array) = s.array() {
                 Terminal::Array(array)
             } else if let Ok(block) = s.block() {
                 Terminal::Block(block)
-            }else  if let Ok(function) = s.function_definition() {
+            } else if let Ok(function) = s.function_definition() {
                 Terminal::Function(function)
             } else if let Ok(ident) = s.ident() {
                 Terminal::Ident(ident)
@@ -271,14 +268,12 @@ impl Parser<'_> {
             Ok(terminal)
         })
     }
-
-    
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parse::expr::{BinaryOp, Stmt, DeclarationKind};
+    use crate::parse::expr::{BinaryOp, DeclarationKind, Stmt};
     #[test]
     fn ident() {
         let mut parser = Parser::from("xyz");
@@ -400,10 +395,7 @@ mod test {
             parser.function_definition(),
             Ok(Function {
                 generic: Vec::new(),
-                args: vec![(
-                    parser.rodeo.get_or_intern("a"),
-                    None,
-                )],
+                args: vec![(parser.rodeo.get_or_intern("a"), None,)],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
             })
@@ -413,10 +405,7 @@ mod test {
             parser.function_definition(),
             Ok(Function {
                 generic: Vec::new(),
-                args: vec![(
-                    parser.rodeo.get_or_intern("a"),
-                    Some(Type::Number),
-                )],
+                args: vec![(parser.rodeo.get_or_intern("a"), Some(Type::Number),)],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
             })
@@ -426,10 +415,7 @@ mod test {
             parser.function_definition(),
             Ok(Function {
                 generic: vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())],
-                args: vec![(
-                    parser.rodeo.get_or_intern("a"),
-                    Some(Type::Number),
-                )],
+                args: vec![(parser.rodeo.get_or_intern("a"), Some(Type::Number),)],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
             })
@@ -440,14 +426,8 @@ mod test {
             Ok(Function {
                 generic: Vec::new(),
                 args: vec![
-                    (
-                        parser.rodeo.get_or_intern("a"),
-                        Some(Type::Number),
-                    ),
-                    (
-                        parser.rodeo.get_or_intern("b"),
-                        Some(Type::Number),
-                    ),
+                    (parser.rodeo.get_or_intern("a"), Some(Type::Number),),
+                    (parser.rodeo.get_or_intern("b"), Some(Type::Number),),
                 ],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
@@ -459,14 +439,8 @@ mod test {
             Ok(Function {
                 generic: Vec::new(),
                 args: vec![
-                    (
-                        parser.rodeo.get_or_intern("a"),
-                        Some(Type::Number),
-                    ),
-                    (
-                        parser.rodeo.get_or_intern("b"),
-                        Some(Type::Number),
-                    ),
+                    (parser.rodeo.get_or_intern("a"), Some(Type::Number),),
+                    (parser.rodeo.get_or_intern("b"), Some(Type::Number),),
                 ],
                 return_type: Some(Type::Number),
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
@@ -476,10 +450,12 @@ mod test {
 
     #[test]
     fn asdf() {
-        let mut parser = Parser::from(r"() -> number => {
+        let mut parser = Parser::from(
+            r"() -> number => {
             let a = 1;
             a
-        }");
+        }",
+        );
         assert_eq!(
             parser.function_definition(),
             Ok(Function {
@@ -487,10 +463,15 @@ mod test {
                 args: Vec::new(),
                 return_type: Some(Type::Number),
                 body: Box::new(Expr::Terminal(Terminal::Block(Block {
-                    statements: vec![
-                        Stmt::Declaration(DeclarationKind::Let, None, parser.rodeo.get_or_intern("a"),  Expr::Terminal(Terminal::Int(1))),
-                    ],
-                    expr: Some(Box::new(Expr::Terminal(Terminal::Ident(parser.rodeo.get_or_intern("a"))))),
+                    statements: vec![Stmt::Declaration(
+                        DeclarationKind::Let,
+                        None,
+                        parser.rodeo.get_or_intern("a"),
+                        Expr::Terminal(Terminal::Int(1))
+                    ),],
+                    expr: Some(Box::new(Expr::Terminal(Terminal::Ident(
+                        parser.rodeo.get_or_intern("a")
+                    )))),
                 })))
             })
         );
