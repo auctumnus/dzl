@@ -64,7 +64,7 @@ pub enum Expr {
     /// `op expr`
     UnaryOp(UnaryOp, Box<Expr>),
     /// `expr(expr, expr, ...)`
-    Call(Spur, Vec<Expr>),
+    Call(Box<Expr>, Vec<Expr>),
     /// `expr[index]`
     Index(Box<Expr>, Box<Expr>),
     /// `expr.member`
@@ -126,12 +126,12 @@ impl Parser<'_> {
     }
     fn call(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
-            let ident = s.ident()?;
+            let expr = s.index()?;
             s.skip_whitespace();
             s.match_char('(')?;
             let args = s.delimited(',', Parser::expr)?;
             s.match_char(')')?;
-            Ok(Expr::Call(ident, args))
+            Ok(Expr::Call(Box::new(expr), args))
         }).or_else(|_: String| self.index())
     }
 
@@ -878,10 +878,29 @@ mod test {
         assert_eq!(
             parser.expr(),
             Ok(Expr::Call(
-                parser.rodeo.get_or_intern("x"),
+                Box::new(Expr::Terminal(Terminal::Ident(
+                    parser.rodeo.get_or_intern("x")
+                ))),
                 vec![Expr::Terminal(Terminal::Int(0))]
             ))
         );
+
+        let mut parser = Parser::from("x(0, 1)");
+        assert_eq!(
+            parser.expr(),
+            Ok(Expr::Call(
+                Box::new(Expr::Terminal(Terminal::Ident(
+                    parser.rodeo.get_or_intern("x")
+                ))),
+                vec![
+                    Expr::Terminal(Terminal::Int(0)),
+                    Expr::Terminal(Terminal::Int(1))
+                ]
+            ))
+        );
+
+        let mut parser = Parser::from("foreachint([1, 2, 3, 4], (n) => stdout.println(n * 2))");
+        assert!(parser.expr().is_ok());
     }
 
     #[test]
