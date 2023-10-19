@@ -216,5 +216,7 @@ mod test {
     fn float_with_exponent() {
         assert_eq!(Parser::from("12e4f").float(), Ok(120_000.0));
         assert_eq!(Parser::from("12.0e4f").float(), Ok(120_000.0));
+        assert_eq!(Parser::from("12.0e+4f").float(), Ok(120_000.0));
+        assert!((Parser::from("12.0e-1f").float().unwrap() - 1.2).abs() < 0.0001);
     }
 }
