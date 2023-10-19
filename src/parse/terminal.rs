@@ -1,6 +1,7 @@
 use lasso::Spur;
 
 use super::expr::{Expr, Stmt};
+use super::strings::DzStr;
 use super::types::Type;
 use super::Parser;
 
@@ -23,7 +24,7 @@ pub enum Terminal {
     Int(i64),
     Float(f64),
     Ident(Spur),
-    String(Spur),
+    String(DzStr),
     Bool(bool),
     /// parenthesised expression
     Expr(Box<Expr>),
@@ -61,51 +62,23 @@ impl Parser<'_> {
             _ => Err("identifier must start with XID_Start or _".to_string()),
         })
     }
-    pub fn int(&mut self) -> Result<i64, &'static str> {
-        self.lexeme(|s| {
-            let number = s.next_while(|c| c.is_ascii_digit());
-            if let Some('.') = s.peek() {
-                Err("expected integer, found float")
-            } else if let Ok(number) = number.parse::<i64>() {
-                Ok(number)
-            } else {
-                Err("invalid integer")
-            }
-        })
-    }
-    pub fn float(&mut self) -> Result<f64, &'static str> {
-        self.lexeme(|s| {
-            let n1 = s.next_while(|c| c.is_ascii_digit());
-            if let Some('.') = s.peek() {
-                s.next();
-                let n2 = s.next_while(|c| c.is_ascii_digit());
-                if let Ok(n) = format!("{n1}.{n2}").parse::<f64>() {
-                    Ok(n)
-                } else {
-                    Err("invalid float")
-                }
-            } else {
-                Err("expected float, found integer")
-            }
-        })
-    }
-    pub fn string(&mut self) -> Result<Spur, &'static str> {
-        self.lexeme(|s| {
-            if let Some('"') = s.peek() {
-                s.next();
-                let string = s.next_while(|c| c != '"' && c != '\n');
-                if let Some('"') = s.peek() {
-                    s.next();
-                    let string = s.rodeo.get_or_intern(string);
-                    Ok(string)
-                } else {
-                    Err("unterminated string")
-                }
-            } else {
-                Err("expected string")
-            }
-        })
-    }
+    // pub fn string(&mut self) -> Result<Spur, &'static str> {
+    //     self.lexeme(|s| {
+    //         if s.peek() == Some('"') {
+    //             s.next();
+    //             let string = s.next_while(|c| c != '"' && c != '\n');
+    //             if s.peek() == Some('"') {
+    //                 s.next();
+    //                 let string = s.rodeo.get_or_intern(string);
+    //                 Ok(string)
+    //             } else {
+    //                 Err("unterminated string")
+    //             }
+    //         } else {
+    //             Err("expected string")
+    //         }
+    //     })
+    // }
     fn paren_expr(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
             s.match_char('(')?;
@@ -119,7 +92,7 @@ impl Parser<'_> {
         self.lexeme(|s| {
             let ident = s.ident()?;
             s.skip_whitespace();
-            let r#type = if let Some(':') = s.peek() {
+            let r#type = if s.peek() == Some(':') {
                 s.next();
                 s.skip_whitespace();
                 Some(s.r#type()?)
@@ -141,7 +114,7 @@ impl Parser<'_> {
 
     fn short_function_definition(&mut self) -> Result<Function, String> {
         self.lexeme(|s| {
-            let generic = if let Some('<') = s.peek() {
+            let generic = if s.peek() == Some('<') {
                 s.generic()?
             } else {
                 Vec::new()
@@ -168,7 +141,7 @@ impl Parser<'_> {
 
     fn long_function_definition(&mut self) -> Result<Function, String> {
         self.lexeme(|s| {
-            let generic = if let Some('<') = s.peek() {
+            let generic = if s.peek() == Some('<') {
                 s.generic()?
             } else {
                 Vec::new()
@@ -260,9 +233,9 @@ impl Parser<'_> {
                 Terminal::Bool(boolean)
             } else {
                 if let Some(c) = s.peek() {
-                    return Err(s.make_error(format!("unexpected character '{c}'")));
+                    return Err(s.make_error(&format!("unexpected character '{c}'")));
                 }
-                return Err(s.make_error("unexpected end of file".to_string()));
+                return Err(s.make_error("unexpected end of file"));
             };
             s.skip_whitespace();
             Ok(terminal)
@@ -293,48 +266,9 @@ mod test {
     }
 
     #[test]
-    fn int() {
-        let mut parser = Parser::from("123");
-        assert_eq!(parser.int(), Ok(123));
-        assert_eq!(parser.position.pos, 3);
-        assert_eq!(parser.buffer, Vec::new());
-        assert_eq!(parser.lexeme_stack, Vec::new());
-
-        assert!(Parser::from("123.").int().is_err());
-    }
-
-    #[test]
     fn bool() {
         assert_eq!(Parser::from("true").boolean(), Ok(true));
         assert_eq!(Parser::from("false").boolean(), Ok(false));
-    }
-
-    #[test]
-    fn float() {
-        let mut parser = Parser::from("123.456");
-        assert_eq!(parser.float(), Ok(123.456));
-        assert_eq!(parser.position.pos, 7);
-        assert_eq!(parser.buffer, Vec::new());
-        assert_eq!(parser.lexeme_stack, Vec::new());
-
-        assert!(Parser::from("123").float().is_err());
-    }
-
-    #[test]
-    fn string() {
-        let mut parser = Parser::from("\"hello world\"");
-        assert_eq!(
-            parser.string().map(|i| parser.rodeo.resolve(&i)),
-            Ok("hello world")
-        );
-        assert_eq!(parser.position.pos, 13);
-        assert_eq!(parser.buffer, Vec::new());
-        assert_eq!(parser.lexeme_stack, Vec::new());
-
-        assert_eq!(
-            Parser::from("\"hello\nworld\"").string(),
-            Err("unterminated string")
-        );
     }
 
     #[test]
@@ -373,7 +307,9 @@ mod test {
         let mut parser = Parser::from("\"hello world\"");
         assert_eq!(
             parser.terminal(),
-            Ok(Terminal::String(parser.rodeo.get_or_intern("hello world")))
+            Ok(Terminal::String(DzStr::Simple(
+                parser.rodeo.get_or_intern("hello world")
+            )))
         );
     }
 

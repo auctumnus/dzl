@@ -15,8 +15,8 @@ fn main() {
     let mut parser = parse::Parser::from(program);
     let (statements, errors) = parser.program();
 
-    println!("{:#?}", statements);
-    println!("{:#?}", errors);
+    println!("{statements:#?}");
+    println!("{errors:#?}");
 
     // let mut parser = parse::Parser::from(r#"const x = 1;
     // const y = 2;

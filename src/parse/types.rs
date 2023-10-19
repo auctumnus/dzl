@@ -24,12 +24,12 @@ pub enum Type {
     /*Int(IntSize),
     Uint(IntSize),*/
     Number,
-    Float /*(FloatSize)*/,
+    Float, /*(FloatSize)*/
     String,
     Bool,
     Void,
 
-    Ref(Box<Type>),
+    //Ref(Box<Type>),
     Object(Vec<(Spur, Type)>),
     Tuple(Vec<Type>),
     Function(Vec<Type>, Box<Type>),
@@ -84,7 +84,7 @@ impl Parser<'_> {
                 } else {
                     break;
                 }
-                if let Some(',') = s.peek() {
+                if s.peek() == Some(',') {
                     s.next();
                     s.skip_whitespace();
                 } else {
@@ -141,7 +141,6 @@ impl Parser<'_> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -164,14 +163,32 @@ mod test {
         let mut parser = Parser::from("ident<T>");
         assert_eq!(
             parser.r#type(),
-            Ok(Type::Ident(parser.rodeo.get_or_intern("ident"), vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())]))
+            Ok(Type::Ident(
+                parser.rodeo.get_or_intern("ident"),
+                vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())]
+            ))
         );
         let mut parser = Parser::from("ident<T,K>");
         assert_eq!(
             parser.r#type(),
-            Ok(Type::Ident(parser.rodeo.get_or_intern("ident"), vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new()), Type::Ident(parser.rodeo.get_or_intern("K"), Vec::new())]))
+            Ok(Type::Ident(
+                parser.rodeo.get_or_intern("ident"),
+                vec![
+                    Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new()),
+                    Type::Ident(parser.rodeo.get_or_intern("K"), Vec::new())
+                ]
+            ))
         );
-        assert_eq!(Parser::from("ident<T,K,>").r#type(), Ok(Type::Ident(parser.rodeo.get_or_intern("ident"), vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new()), Type::Ident(parser.rodeo.get_or_intern("K"), Vec::new())])));
+        assert_eq!(
+            Parser::from("ident<T,K,>").r#type(),
+            Ok(Type::Ident(
+                parser.rodeo.get_or_intern("ident"),
+                vec![
+                    Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new()),
+                    Type::Ident(parser.rodeo.get_or_intern("K"), Vec::new())
+                ]
+            ))
+        );
     }
 
     #[test]
@@ -179,17 +196,26 @@ mod test {
         let mut parser = Parser::from("{a: number}");
         assert_eq!(
             parser.r#type(),
-            Ok(Type::Object(vec![(parser.rodeo.get_or_intern("a"), Type::Number)]))
+            Ok(Type::Object(vec![(
+                parser.rodeo.get_or_intern("a"),
+                Type::Number
+            )]))
         );
         let mut parser = Parser::from("{a: number, b: number}");
         assert_eq!(
             parser.r#type(),
-            Ok(Type::Object(vec![(parser.rodeo.get_or_intern("a"), Type::Number), (parser.rodeo.get_or_intern("b"), Type::Number)]))
+            Ok(Type::Object(vec![
+                (parser.rodeo.get_or_intern("a"), Type::Number),
+                (parser.rodeo.get_or_intern("b"), Type::Number)
+            ]))
         );
         let mut parser = Parser::from("{a: number, b: number,}");
         assert_eq!(
             parser.r#type(),
-            Ok(Type::Object(vec![(parser.rodeo.get_or_intern("a"), Type::Number), (parser.rodeo.get_or_intern("b"), Type::Number)]))
+            Ok(Type::Object(vec![
+                (parser.rodeo.get_or_intern("a"), Type::Number),
+                (parser.rodeo.get_or_intern("b"), Type::Number)
+            ]))
         );
     }
 
@@ -198,20 +224,44 @@ mod test {
         let mut parser = Parser::from("(number)");
         assert_eq!(parser.r#type(), Ok(Type::Tuple(vec![Type::Number])));
         let mut parser = Parser::from("(number, number)");
-        assert_eq!(parser.r#type(), Ok(Type::Tuple(vec![Type::Number, Type::Number])));
+        assert_eq!(
+            parser.r#type(),
+            Ok(Type::Tuple(vec![Type::Number, Type::Number]))
+        );
         let mut parser = Parser::from("(number, number,)");
-        assert_eq!(parser.r#type(), Ok(Type::Tuple(vec![Type::Number, Type::Number])));
+        assert_eq!(
+            parser.r#type(),
+            Ok(Type::Tuple(vec![Type::Number, Type::Number]))
+        );
         let mut parser = Parser::from("((number))");
-        assert_eq!(parser.r#type(), Ok(Type::Tuple(vec![Type::Tuple(vec![Type::Number])])));
+        assert_eq!(
+            parser.r#type(),
+            Ok(Type::Tuple(vec![Type::Tuple(vec![Type::Number])]))
+        );
     }
 
     #[test]
     fn function() {
         let mut parser = Parser::from("(number) -> number");
-        assert_eq!(parser.r#type(), Ok(Type::Function(vec![Type::Number], Box::new(Type::Number))));
+        assert_eq!(
+            parser.r#type(),
+            Ok(Type::Function(vec![Type::Number], Box::new(Type::Number)))
+        );
         let mut parser = Parser::from("(number, number) -> number");
-        assert_eq!(parser.r#type(), Ok(Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number))));
+        assert_eq!(
+            parser.r#type(),
+            Ok(Type::Function(
+                vec![Type::Number, Type::Number],
+                Box::new(Type::Number)
+            ))
+        );
         let mut parser = Parser::from("(number, number,) -> number");
-        assert_eq!(parser.r#type(), Ok(Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number))));
+        assert_eq!(
+            parser.r#type(),
+            Ok(Type::Function(
+                vec![Type::Number, Type::Number],
+                Box::new(Type::Number)
+            ))
+        );
     }
 }

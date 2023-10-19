@@ -2,9 +2,13 @@ use std::hint::unreachable_unchecked;
 
 use lasso::Spur;
 
-use super::{terminal::{Terminal, Block}, types::Type, Parser};
+use super::{
+    terminal::{Block, Terminal},
+    types::Type,
+    Parser,
+};
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -25,7 +29,7 @@ pub enum BinaryOp {
     BitwiseAnd,
     BitwiseOr,
     BitwiseXor,
-    As,
+    // As,
 }
 /*
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -50,7 +54,7 @@ impl BinaryOp {
     }
 }*/
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -74,12 +78,11 @@ pub enum Expr {
     /// i.e. is the average block <= 8 statements?
     If(Box<Expr>, Block, Option<Block>),
     While(Box<Expr>, Block),
-    
     // TODO: for loops
     // i like rust's for loops so i probably need to figure out the whole pattern
     // business
 }
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DeclarationKind {
     Let,
     Const,
@@ -110,7 +113,8 @@ impl Parser<'_> {
             s.skip_whitespace();
             let member = s.ident()?;
             Ok(Expr::Member(Box::new(expr), member))
-        }).or_else(|_: String| self.terminal().map(Expr::Terminal))
+        })
+        .or_else(|_: String| self.terminal().map(Expr::Terminal))
     }
     fn index(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
@@ -122,7 +126,8 @@ impl Parser<'_> {
             s.skip_whitespace();
             s.match_char(']')?;
             Ok(Expr::Index(Box::new(expr), Box::new(index)))
-        }).or_else(|_: String| self.member())
+        })
+        .or_else(|_: String| self.member())
     }
     fn call(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
@@ -132,7 +137,8 @@ impl Parser<'_> {
             let args = s.delimited(',', Parser::expr)?;
             s.match_char(')')?;
             Ok(Expr::Call(Box::new(expr), args))
-        }).or_else(|_: String| self.index())
+        })
+        .or_else(|_: String| self.index())
     }
 
     fn unary_op(&mut self) -> Result<UnaryOp, String> {
@@ -188,7 +194,7 @@ impl Parser<'_> {
                     }
                     '*' => {
                         s.next();
-                        let op = if let Some('*') = s.peek() {
+                        let op = if s.peek() == Some('*') {
                             s.next();
                             BinaryOp::Pow
                         } else {
@@ -233,7 +239,7 @@ impl Parser<'_> {
     fn compare_op(&mut self) -> Result<BinaryOp, &'static str> {
         let r = self.lexeme(|s| match s.next() {
             Some('<') => {
-                if let Some('=') = s.peek() {
+                if s.peek() == Some('=') {
                     s.next();
                     Ok(BinaryOp::Leq)
                 } else {
@@ -241,7 +247,7 @@ impl Parser<'_> {
                 }
             }
             Some('>') => {
-                if let Some('=') = s.peek() {
+                if s.peek() == Some('=') {
                     s.next();
                     Ok(BinaryOp::Geq)
                 } else {
@@ -267,7 +273,7 @@ impl Parser<'_> {
     fn equal_op(&mut self) -> Result<BinaryOp, &'static str> {
         let r = self.lexeme(|s| match s.next() {
             Some('=') => {
-                if let Some('=') = s.peek() {
+                if s.peek() == Some('=') {
                     s.next();
                     Ok(BinaryOp::Eq)
                 } else {
@@ -275,7 +281,7 @@ impl Parser<'_> {
                 }
             }
             Some('!') => {
-                if let Some('=') = s.peek() {
+                if s.peek() == Some('=') {
                     s.next();
                     Ok(BinaryOp::Neq)
                 } else {
@@ -298,8 +304,39 @@ impl Parser<'_> {
             Ok(expr)
         })
     }
+    pub fn if_expr(&mut self) -> Result<Expr, String> {
+        self.lexeme(|s| {
+            s.match_str("if")?;
+            s.expect_whitespace()?;
+            let cond = s.expr()?;
+            s.skip_whitespace();
+            let then = s.block()?;
+            s.skip_whitespace();
+            let else_ = if s.peek() == Some('e') {
+                s.match_str("else")?;
+                s.skip_whitespace();
+                let expr = s.block()?;
+                Some(expr)
+            } else {
+                None
+            };
+            Ok(Expr::If(Box::new(cond), then, else_))
+        })
+        .or_else(|_: String| self.equality())
+    }
+    pub fn while_expr(&mut self) -> Result<Expr, String> {
+        self.lexeme(|s| {
+            s.match_str("while")?;
+            s.expect_whitespace()?;
+            let cond = s.expr()?;
+            s.skip_whitespace();
+            let block = s.block()?;
+            Ok(Expr::While(Box::new(cond), block))
+        })
+        .or_else(|_: String| self.if_expr())
+    }
     pub fn expr(&mut self) -> Result<Expr, String> {
-        self.equality()
+        self.while_expr()
     }
     fn declaration(&mut self) -> Result<Stmt, String> {
         self.lexeme(|s| {
@@ -317,7 +354,7 @@ impl Parser<'_> {
             s.skip_whitespace();
             let ident = s.ident()?;
             s.skip_whitespace();
-            let r#type = if let Some(':') = s.peek() {
+            let r#type = if s.peek() == Some(':') {
                 s.next();
                 s.skip_whitespace();
                 let r#type = s.r#type();
@@ -326,7 +363,7 @@ impl Parser<'_> {
             } else {
                 None
             };
-            if let Some('=') = s.peek() {
+            if s.peek() == Some('=') {
                 s.next();
             } else {
                 return Err("expected =".to_string());
@@ -346,7 +383,7 @@ impl Parser<'_> {
                 Some('%') => BinaryOp::Mod,
                 Some('^') => BinaryOp::BitwiseXor,
                 Some('*') => {
-                    if let Some('*') = s.peek() {
+                    if s.peek() == Some('*') {
                         s.next();
                         BinaryOp::Pow
                     } else {
@@ -354,7 +391,7 @@ impl Parser<'_> {
                     }
                 }
                 Some('<') => {
-                    if let Some('<') = s.peek() {
+                    if s.peek() == Some('<') {
                         s.next();
                         BinaryOp::Shl
                     } else {
@@ -362,7 +399,7 @@ impl Parser<'_> {
                     }
                 }
                 Some('>') => {
-                    if let Some('>') = s.peek() {
+                    if s.peek() == Some('>') {
                         s.next();
                         BinaryOp::Shr
                     } else {
@@ -370,7 +407,7 @@ impl Parser<'_> {
                     }
                 }
                 Some('&') => {
-                    if let Some('&') = s.peek() {
+                    if s.peek() == Some('&') {
                         s.next();
                         BinaryOp::And
                     } else {
@@ -378,7 +415,7 @@ impl Parser<'_> {
                     }
                 }
                 Some('|') => {
-                    if let Some('|') = s.peek() {
+                    if s.peek() == Some('|') {
                         s.next();
                         BinaryOp::Or
                     } else {
@@ -388,7 +425,7 @@ impl Parser<'_> {
                 Some(_) => return Err("expected assignment operator".to_string()),
                 None => return Err("unexpected end of file".to_string()),
             };
-            if let Some('=') = s.next() {
+            if s.next() == Some('=') {
                 s.skip_whitespace();
                 Ok(Some(op))
             } else {
@@ -408,56 +445,57 @@ impl Parser<'_> {
     }
     pub fn statement(&mut self) -> Result<Stmt, String> {
         self.lexeme(|s| {
-            let statement = 
-            if let Ok(keyword) = s.match_to(&vec![("return", 0), ("break", 1), ("continue", 2)]) {
+            let statement = if let Ok(keyword) =
+                s.match_to(&vec![("return", 0), ("break", 1), ("continue", 2)])
+            {
                 match keyword {
                     0 => {
                         s.skip_whitespace();
-                        let expr = if let Some(';') = s.peek() {
+                        let expr = if s.peek() == Some(';') {
                             None
                         } else {
                             Some(Box::new(s.expr()?))
                         };
-                        if let Some(';') = s.peek() {
+                        if s.peek() == Some(';') {
                             s.next();
                         }
                         Ok(Stmt::Return(expr))
                     }
                     1 => {
                         s.skip_whitespace();
-                        let expr = if let Some(';') = s.peek() {
+                        let expr = if s.peek() == Some(';') {
                             None
                         } else {
                             Some(Box::new(s.expr()?))
                         };
-                        if let Some(';') = s.peek() {
+                        if s.peek() == Some(';') {
                             s.next();
                         }
                         Ok(Stmt::Break(expr))
                     }
                     2 => {
-                        if let Some(';') = s.peek() {
+                        if s.peek() == Some(';') {
                             s.next();
                         }
                         Ok(Stmt::Continue)
                     }
                     // SAFETY: the match_to call above ensures that the keyword is one of the
                     // three keywords above
-                    _ => unsafe { unreachable_unchecked() }
+                    _ => unsafe { unreachable_unchecked() },
                 }
             } else if let Ok(declaration) = s.declaration() {
-                if let Some(';') = s.peek() {
+                if s.peek() == Some(';') {
                     s.next();
                 }
                 Ok(declaration)
             } else if let Ok(assignment) = s.assignment() {
-                if let Some(';') = s.peek() {
+                if s.peek() == Some(';') {
                     s.next();
                 }
                 Ok(assignment)
             } else {
                 let expr = s.expr()?;
-                if let Some(';') = s.peek() {
+                if s.peek() == Some(';') {
                     s.next();
                     Ok(Stmt::Statement(expr))
                 } else {
@@ -466,26 +504,6 @@ impl Parser<'_> {
             };
             s.skip_whitespace();
             statement
-        })
-    }
-    
-    pub fn if_expr(&mut self) -> Result<Expr, String> {
-        self.lexeme(|s| {
-            s.match_str("if")?;
-            s.expect_whitespace()?;
-            let cond = s.expr()?;
-            s.skip_whitespace();
-            let then = s.block()?;
-            s.skip_whitespace();
-            let else_ = if let Some('e') = s.peek() {
-                s.match_str("else")?;
-                s.skip_whitespace();
-                let expr = s.block()?;
-                Some(expr)
-            } else {
-                None
-            };
-            Ok(Expr::If(Box::new(cond), then, else_))
         })
     }
 }
@@ -749,10 +767,12 @@ mod test {
             })
         );
 
-        let mut parser = Parser::from(r"{
+        let mut parser = Parser::from(
+            r"{
             1;
             2; 
-        }");
+        }",
+        );
         assert_eq!(
             parser.block(),
             Ok(Block {
@@ -800,7 +820,6 @@ mod test {
                     statements: vec![],
                     expr: Some(Box::new(Expr::Terminal(Terminal::Int(2))))
                 }),
-                
             ))
         );
     }
@@ -841,12 +860,18 @@ mod test {
         let mut parser = Parser::from("-1");
         assert_eq!(
             parser.expr(),
-            Ok(Expr::UnaryOp(UnaryOp::Neg, Box::new(Expr::Terminal(Terminal::Int(1)))))
+            Ok(Expr::UnaryOp(
+                UnaryOp::Neg,
+                Box::new(Expr::Terminal(Terminal::Int(1)))
+            ))
         );
         let mut parser = Parser::from("!1");
         assert_eq!(
             parser.expr(),
-            Ok(Expr::UnaryOp(UnaryOp::Not, Box::new(Expr::Terminal(Terminal::Int(1)))))
+            Ok(Expr::UnaryOp(
+                UnaryOp::Not,
+                Box::new(Expr::Terminal(Terminal::Int(1)))
+            ))
         );
     }
     // largely for code coverage

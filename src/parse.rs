@@ -1,5 +1,7 @@
 mod expr;
 mod lexeme;
+mod numbers;
+mod strings;
 mod terminal;
 mod types;
 mod util;
@@ -127,7 +129,7 @@ mod test {
         "#;
 
         let mut parser = Parser::from(program);
-        let (statements, errors) = parser.program();
+        let (_, errors) = parser.program();
         assert_eq!(errors, Vec::<String>::new());
     }
 }

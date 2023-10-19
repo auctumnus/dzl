@@ -58,10 +58,10 @@ impl Parser<'_> {
                 self.next();
                 Ok(c)
             } else {
-                Err(self.make_error(format!("expected {c}, found {c2}")))
+                Err(self.make_error(&format!("expected {c}, found {c2}")))
             }
         } else {
-            Err(self.make_error("unexpected end of file".to_string()))
+            Err(self.make_error("unexpected end of file"))
         }
     }
     pub fn match_str<'a>(&mut self, string: &'a str) -> Result<&'a str, String> {
@@ -78,7 +78,7 @@ impl Parser<'_> {
     }
     pub fn expect_whitespace(&mut self) -> Result<(), String> {
         if self.next_while(|c| c.is_ascii_whitespace()).is_empty() {
-            Err(self.make_error("expected whitespace".to_string()))
+            Err(self.make_error("expected whitespace"))
         } else {
             Ok(())
         }
@@ -117,13 +117,28 @@ impl Parser<'_> {
         })
     }
 
+    pub fn surrounded<T>(
+        &mut self,
+        by: (char, char),
+        mut f: impl FnMut(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.lexeme(|s| {
+            s.match_char(by.0)?;
+            s.skip_whitespace();
+            let item = f(s)?;
+            s.skip_whitespace();
+            s.match_char(by.1)?;
+            Ok(item)
+        })
+    }
+
     pub fn synchronize(&mut self) {
         self.next_while(|c| c != '\n');
         self.next();
         self.skip_whitespace();
     }
 
-    pub fn make_error(&mut self, message: String) -> String {
+    pub fn make_error(&mut self, message: &str) -> String {
         let row = self.position.row;
         let column = self.position.column;
 
