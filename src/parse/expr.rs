@@ -97,6 +97,7 @@ pub enum Stmt {
     /// `expr;`
     /// different from Expr because this has no return type
     Statement(Expr),
+    Type(Spur, Type),
     /// `expr`
     Expr(Expr),
     Continue,
@@ -348,6 +349,16 @@ impl Parser<'_> {
                 Some('c') => {
                     s.match_str("const")?;
                     DeclarationKind::Const
+                }
+                Some('t') => {
+                    s.match_str("type")?;
+                    s.skip_whitespace();
+                    let ident = s.ident()?;
+                    s.skip_whitespace();
+                    s.match_char('=')?;
+                    s.skip_whitespace();
+                    let r#type = s.r#type()?;
+                    return Ok(Stmt::Type(ident, r#type));
                 }
                 _ => return Err("expected let or const".to_string()),
             };
