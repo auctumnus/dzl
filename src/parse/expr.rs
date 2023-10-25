@@ -1,10 +1,7 @@
-use std::hint::unreachable_unchecked;
-
 use lasso::Spur;
 
 use super::{
     terminal::{Block, Terminal},
-    types::Type,
     Parser,
 };
 
@@ -82,28 +79,7 @@ pub enum Expr {
     // i like rust's for loops so i probably need to figure out the whole pattern
     // business
 }
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum DeclarationKind {
-    Let,
-    Const,
-}
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum Stmt {
-    /// `let ident = expr`
-    Declaration(DeclarationKind, Option<Type>, Spur, Expr),
-    /// `ident = expr`, `ident *= expr`
-    Assignment(Spur, Option<BinaryOp>, Expr),
-    /// `expr;`
-    /// different from Expr because this has no return type
-    Statement(Expr),
-    Type(Spur, Type),
-    /// `expr`
-    Expr(Expr),
-    Continue,
-    Break(Option<Box<Expr>>),
-    Return(Option<Box<Expr>>),
-}
 
 impl Parser<'_> {
     fn member(&mut self) -> Result<Expr, String> {
@@ -339,188 +315,13 @@ impl Parser<'_> {
     pub fn expr(&mut self) -> Result<Expr, String> {
         self.while_expr()
     }
-    fn declaration(&mut self) -> Result<Stmt, String> {
-        self.lexeme(|s| {
-            let kind = match s.peek() {
-                Some('l') => {
-                    s.match_str("let")?;
-                    DeclarationKind::Let
-                }
-                Some('c') => {
-                    s.match_str("const")?;
-                    DeclarationKind::Const
-                }
-                Some('t') => {
-                    s.match_str("type")?;
-                    s.skip_whitespace();
-                    let ident = s.ident()?;
-                    s.skip_whitespace();
-                    s.match_char('=')?;
-                    s.skip_whitespace();
-                    let r#type = s.r#type()?;
-                    return Ok(Stmt::Type(ident, r#type));
-                }
-                _ => return Err("expected let or const".to_string()),
-            };
-            s.skip_whitespace();
-            let ident = s.ident()?;
-            s.skip_whitespace();
-            let r#type = if s.peek() == Some(':') {
-                s.next();
-                s.skip_whitespace();
-                let r#type = s.r#type();
-                s.skip_whitespace();
-                r#type.ok()
-            } else {
-                None
-            };
-            if s.peek() == Some('=') {
-                s.next();
-            } else {
-                return Err("expected =".to_string());
-            }
-            s.skip_whitespace();
-            let expr = s.expr()?;
-            Ok(Stmt::Declaration(kind, r#type, ident, expr))
-        })
-    }
-    fn assignment_operator(&mut self) -> Result<Option<BinaryOp>, String> {
-        self.lexeme(|s| {
-            let op = match s.next() {
-                Some('=') => return Ok(None),
-                Some('+') => BinaryOp::Add,
-                Some('-') => BinaryOp::Sub,
-                Some('/') => BinaryOp::Div,
-                Some('%') => BinaryOp::Mod,
-                Some('^') => BinaryOp::BitwiseXor,
-                Some('*') => {
-                    if s.peek() == Some('*') {
-                        s.next();
-                        BinaryOp::Pow
-                    } else {
-                        BinaryOp::Mul
-                    }
-                }
-                Some('<') => {
-                    if s.peek() == Some('<') {
-                        s.next();
-                        BinaryOp::Shl
-                    } else {
-                        return Err("expected shift left assign".to_string());
-                    }
-                }
-                Some('>') => {
-                    if s.peek() == Some('>') {
-                        s.next();
-                        BinaryOp::Shr
-                    } else {
-                        return Err("expected shift right assign".to_string());
-                    }
-                }
-                Some('&') => {
-                    if s.peek() == Some('&') {
-                        s.next();
-                        BinaryOp::And
-                    } else {
-                        BinaryOp::BitwiseAnd
-                    }
-                }
-                Some('|') => {
-                    if s.peek() == Some('|') {
-                        s.next();
-                        BinaryOp::Or
-                    } else {
-                        BinaryOp::BitwiseOr
-                    }
-                }
-                Some(_) => return Err("expected assignment operator".to_string()),
-                None => return Err("unexpected end of file".to_string()),
-            };
-            if s.next() == Some('=') {
-                s.skip_whitespace();
-                Ok(Some(op))
-            } else {
-                Err("expected =".to_string())
-            }
-        })
-    }
-    fn assignment(&mut self) -> Result<Stmt, String> {
-        self.lexeme(|s| {
-            let ident = s.ident()?;
-            s.skip_whitespace();
-            let op = s.assignment_operator()?;
-            s.skip_whitespace();
-            let expr = s.expr()?;
-            Ok(Stmt::Assignment(ident, op, expr))
-        })
-    }
-    pub fn statement(&mut self) -> Result<Stmt, String> {
-        self.lexeme(|s| {
-            let statement = if let Ok(keyword) =
-                s.match_to(&vec![("return", 0), ("break", 1), ("continue", 2)])
-            {
-                match keyword {
-                    0 => {
-                        s.skip_whitespace();
-                        let expr = if s.peek() == Some(';') {
-                            None
-                        } else {
-                            Some(Box::new(s.expr()?))
-                        };
-                        if s.peek() == Some(';') {
-                            s.next();
-                        }
-                        Ok(Stmt::Return(expr))
-                    }
-                    1 => {
-                        s.skip_whitespace();
-                        let expr = if s.peek() == Some(';') {
-                            None
-                        } else {
-                            Some(Box::new(s.expr()?))
-                        };
-                        if s.peek() == Some(';') {
-                            s.next();
-                        }
-                        Ok(Stmt::Break(expr))
-                    }
-                    2 => {
-                        if s.peek() == Some(';') {
-                            s.next();
-                        }
-                        Ok(Stmt::Continue)
-                    }
-                    // SAFETY: the match_to call above ensures that the keyword is one of the
-                    // three keywords above
-                    _ => unsafe { unreachable_unchecked() },
-                }
-            } else if let Ok(declaration) = s.declaration() {
-                if s.peek() == Some(';') {
-                    s.next();
-                }
-                Ok(declaration)
-            } else if let Ok(assignment) = s.assignment() {
-                if s.peek() == Some(';') {
-                    s.next();
-                }
-                Ok(assignment)
-            } else {
-                let expr = s.expr()?;
-                if s.peek() == Some(';') {
-                    s.next();
-                    Ok(Stmt::Statement(expr))
-                } else {
-                    Ok(Stmt::Expr(expr))
-                }
-            };
-            s.skip_whitespace();
-            statement
-        })
-    }
+    
 }
 
 #[cfg(test)]
 mod test {
+    use crate::parse::statements::Stmt;
+
     use super::*;
     #[test]
     fn factor() {
@@ -605,151 +406,7 @@ mod test {
             ))
         );
     }
-    #[test]
-    fn statement() {
-        let mut parser = Parser::from("let x = 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Declaration(
-                DeclarationKind::Let,
-                None,
-                parser.rodeo.get_or_intern("x"),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-
-        let mut parser = Parser::from("const x = 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Declaration(
-                DeclarationKind::Const,
-                None,
-                parser.rodeo.get_or_intern("x"),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-
-        let mut parser = Parser::from("let x: T = 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Declaration(
-                DeclarationKind::Let,
-                Some(Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())),
-                parser.rodeo.get_or_intern("x"),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-
-        assert!(Parser::from("let x").statement().is_err());
-    }
-    #[test]
-    #[allow(clippy::too_many_lines)]
-    fn assignment() {
-        let mut parser = Parser::from("x = 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                None,
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x+=0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Add),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x -= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Sub),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x *= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Mul),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x /= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Div),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x %= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Mod),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x **= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Pow),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x <<= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Shl),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x >>= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Shr),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x &&= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::And),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-        let mut parser = Parser::from("x ||= 0;");
-        assert_eq!(
-            parser.statement(),
-            Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
-                Some(BinaryOp::Or),
-                Expr::Terminal(Terminal::Int(0))
-            ))
-        );
-
-        assert!(Parser::from("x =").assignment().is_err());
-        assert!(Parser::from("+").assignment_operator().is_err());
-        assert!(Parser::from("").assignment_operator().is_err());
-        assert!(Parser::from("a").assignment_operator().is_err());
-    }
+    
     #[test]
     fn if_expr() {
         let mut parser = Parser::from("if x { 1 }");
@@ -952,4 +609,25 @@ mod test {
             ))
         );
     }
+
+    
+
+    #[test]
+    fn while_expr() {
+        let mut parser = Parser::from("while x { 1 }");
+        assert_eq!(
+            parser.while_expr(),
+            Ok(Expr::While(
+                Box::new(Expr::Terminal(Terminal::Ident(
+                    parser.rodeo.get_or_intern("x")
+                ))),
+                Block {
+                    statements: vec![],
+                    expr: Some(Box::new(Expr::Terminal(Terminal::Int(1))))
+                },
+            ))
+        );
+    }
+
+    
 }

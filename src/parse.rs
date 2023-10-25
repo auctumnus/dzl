@@ -5,11 +5,12 @@ mod strings;
 mod terminal;
 mod types;
 mod util;
+mod statements;
 
 use lasso::Rodeo;
 use std::{iter::Peekable, str::Chars};
 
-use self::expr::Stmt;
+use self::statements::Stmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {

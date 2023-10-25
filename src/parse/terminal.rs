@@ -1,6 +1,10 @@
-use lasso::Spur;
+use std::collections::HashSet;
 
-use super::expr::{Expr, Stmt};
+use lasso::Spur;
+use lazy_static::lazy_static;
+
+use super::expr::Expr;
+use super::statements::Stmt;
 use super::strings::DzStr;
 use super::types::Type;
 use super::Parser;
@@ -33,12 +37,14 @@ pub enum Terminal {
     Array(Vec<Expr>),
 }
 
-const RESERVED_NAMES: &[&str] = &[
-    "let", "const", "if", "else", "while", "continue", "break", "return", "true", "false", "match",
-    "not", "and", "or", "xor", "shl", "shr", "import", "export", "as", "from", "struct", "enum",
-    "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64",
-    "string", "bool", "void",
-];
+lazy_static! {
+    static ref RESERVED_NAMES: HashSet<&'static str> = HashSet::from([
+            "let", "const", "if", "else", "while", "continue", "break", "return", "true", "false", "match",
+            "not", "and", "or", "xor", "shl", "shr", "import", "export", "as", "from", "struct", "enum",
+            "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64",
+            "string", "bool", "void", "number"
+        ]);
+}
 
 impl Parser<'_> {
     fn boolean(&mut self) -> Result<bool, String> {
@@ -62,23 +68,6 @@ impl Parser<'_> {
             _ => Err("identifier must start with XID_Start or _".to_string()),
         })
     }
-    // pub fn string(&mut self) -> Result<Spur, &'static str> {
-    //     self.lexeme(|s| {
-    //         if s.peek() == Some('"') {
-    //             s.next();
-    //             let string = s.next_while(|c| c != '"' && c != '\n');
-    //             if s.peek() == Some('"') {
-    //                 s.next();
-    //                 let string = s.rodeo.get_or_intern(string);
-    //                 Ok(string)
-    //             } else {
-    //                 Err("unterminated string")
-    //             }
-    //         } else {
-    //             Err("expected string")
-    //         }
-    //     })
-    // }
     fn paren_expr(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
             s.match_char('(')?;
@@ -246,7 +235,8 @@ impl Parser<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parse::expr::{BinaryOp, DeclarationKind, Stmt};
+    use crate::parse::expr::BinaryOp;
+    use crate::parse::statements::DeclarationKind;
     #[test]
     fn ident() {
         let mut parser = Parser::from("xyz");
