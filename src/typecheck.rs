@@ -1,16 +1,19 @@
-use std::collections::HashMap;
 use lasso::Spur;
+use std::collections::HashMap;
 
-use crate::{parse::{types::Type, terminal::Terminal, expr::Expr}, interner::{get_or_intern, resolve}};
+use crate::{
+    interner::{get_or_intern, resolve},
+    parse::{expr::Expr, terminal::Terminal, types::Type},
+};
 
 struct TypeEnvironment {
-    pub definitions: HashMap<Spur, Type>
+    pub definitions: HashMap<Spur, Type>,
 }
 
 impl TypeEnvironment {
     pub fn new() -> Self {
         TypeEnvironment {
-            definitions: HashMap::new()
+            definitions: HashMap::new(),
         }
     }
 }
@@ -49,7 +52,7 @@ impl TypeCheck for Terminal {
                 let array_type = get_or_intern(ARRAY_TYPE_NAME);
                 let r#type = Type::Ident(array_type, vec![first]);
                 Ok(r#type)
-            },
+            }
             // Expr(Box<Expr>)
             // Function(Function)
         }
@@ -61,25 +64,52 @@ impl TypeCheck for Expr {
         match self {
             Self::Terminal(t) => t.type_check(env),
             Self::BinaryOp(_, _, _) => todo!(),
-            Self::UnaryOp(_, e) => e.type_check(env),
+            Self::UnaryOp(op, e) => {
+                use crate::parse::expr::UnaryOp::{BitwiseNot, Neg, Not};
+                let e_type = e.type_check(env)?;
+                match op {
+                    Not => Ok(Type::Bool),
+                    Neg => {
+                        if e_type != Type::Number {
+                            return Err(format!("expected number, found {e_type}"));
+                        }
+                        Ok(Type::Number)
+                    }
+                    BitwiseNot => {
+                        if e_type != Type::Number {
+                            return Err(format!("expected number, found {e_type}"));
+                        }
+                        Ok(Type::Number)
+                    }
+                }
+            }
             Self::Call(func, args) => {
-                let args_types = args.iter().map(|a| a.type_check(env)).collect::<Result<Vec<_>, _>>()?;
+                let args_types = args
+                    .iter()
+                    .map(|a| a.type_check(env))
+                    .collect::<Result<Vec<_>, _>>()?;
                 let func_type = func.type_check(env)?;
                 match func_type {
                     Type::Function(params, ret) => {
                         if params.len() != args_types.len() {
-                            return Err(format!("expected {} arguments, found {}", params.len(), args_types.len()));
+                            return Err(format!(
+                                "expected {} arguments, found {}",
+                                params.len(),
+                                args_types.len()
+                            ));
                         }
                         for (param, arg) in params.iter().zip(args_types.iter()) {
                             if param != arg {
-                                return Err(format!("expected argument of type {param}, found {arg}"));
+                                return Err(format!(
+                                    "expected argument of type {param}, found {arg}"
+                                ));
                             }
                         }
                         Ok(*ret)
-                    },
-                    _ => Err(format!("expected function, found {func_type}", )),
+                    }
+                    _ => Err(format!("expected function, found {func_type}",)),
                 }
-            },
+            }
             Self::Index(_, _) => todo!(),
             Self::Member(_, _) => todo!(),
             Self::If(_, _, _) => todo!(),
@@ -87,4 +117,3 @@ impl TypeCheck for Expr {
         }
     }
 }
-

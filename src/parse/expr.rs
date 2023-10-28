@@ -73,13 +73,12 @@ pub enum Expr {
     /// `{ stmt; stmt; ...; (expr) }`
     /// TODO: consider if Vec<Stmt> should be a SmallVec
     /// i.e. is the average block <= 8 statements?
-    If(Box<Expr>, Block, Option<Block>),
+    If(Box<Expr>, Block, Option<Box<Expr>>),
     While(Box<Expr>, Block),
     // TODO: for loops
     // i like rust's for loops so i probably need to figure out the whole pattern
     // business
 }
-
 
 impl Parser<'_> {
     fn member(&mut self) -> Result<Expr, String> {
@@ -281,7 +280,7 @@ impl Parser<'_> {
             Ok(expr)
         })
     }
-    pub fn if_expr(&mut self) -> Result<Expr, String> {
+    fn definitely_if_expr(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
             s.match_str("if")?;
             s.expect_whitespace()?;
@@ -292,14 +291,20 @@ impl Parser<'_> {
             let else_ = if s.peek() == Some('e') {
                 s.match_str("else")?;
                 s.skip_whitespace();
-                let expr = s.block()?;
-                Some(expr)
+                let expr = s
+                    .definitely_if_expr()
+                    .or_else(|_| Ok::<Expr, String>(Expr::Terminal(Terminal::Block(s.block()?))))?;
+                Some(Box::new(expr))
             } else {
                 None
             };
             Ok(Expr::If(Box::new(cond), then, else_))
         })
-        .or_else(|_: String| self.equality())
+    }
+
+    pub fn if_expr(&mut self) -> Result<Expr, String> {
+        self.definitely_if_expr()
+            .or_else(|_: String| self.equality())
     }
     pub fn while_expr(&mut self) -> Result<Expr, String> {
         self.lexeme(|s| {
@@ -315,12 +320,11 @@ impl Parser<'_> {
     pub fn expr(&mut self) -> Result<Expr, String> {
         self.while_expr()
     }
-    
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{parse::statements::Stmt, interner::get_or_intern};
+    use crate::{interner::get_or_intern, parse::statements::Stmt};
 
     use super::*;
     #[test]
@@ -406,16 +410,14 @@ mod test {
             ))
         );
     }
-    
+
     #[test]
     fn if_expr() {
         let mut parser = Parser::from("if x { 1 }");
         assert_eq!(
             parser.if_expr(),
             Ok(Expr::If(
-                Box::new(Expr::Terminal(Terminal::Ident(
-                    get_or_intern("x")
-                ))),
+                Box::new(Expr::Terminal(Terminal::Ident(get_or_intern("x")))),
                 Block {
                     statements: vec![],
                     expr: Some(Box::new(Expr::Terminal(Terminal::Int(1))))
@@ -477,17 +479,15 @@ mod test {
         assert_eq!(
             parser.if_expr(),
             Ok(Expr::If(
-                Box::new(Expr::Terminal(Terminal::Ident(
-                    get_or_intern("x")
-                ))),
+                Box::new(Expr::Terminal(Terminal::Ident(get_or_intern("x")))),
                 Block {
                     statements: vec![],
                     expr: Some(Box::new(Expr::Terminal(Terminal::Int(1))))
                 },
-                Some(Block {
+                Some(Box::new(Expr::Terminal(Terminal::Block(Block {
                     statements: vec![],
                     expr: Some(Box::new(Expr::Terminal(Terminal::Int(2))))
-                }),
+                })))),
             ))
         );
     }
@@ -557,9 +557,7 @@ mod test {
         assert_eq!(
             parser.expr(),
             Ok(Expr::Index(
-                Box::new(Expr::Terminal(Terminal::Ident(
-                    get_or_intern("x")
-                ))),
+                Box::new(Expr::Terminal(Terminal::Ident(get_or_intern("x")))),
                 Box::new(Expr::Terminal(Terminal::Int(0)))
             ))
         );
@@ -571,9 +569,7 @@ mod test {
         assert_eq!(
             parser.expr(),
             Ok(Expr::Call(
-                Box::new(Expr::Terminal(Terminal::Ident(
-                    get_or_intern("x")
-                ))),
+                Box::new(Expr::Terminal(Terminal::Ident(get_or_intern("x")))),
                 vec![Expr::Terminal(Terminal::Int(0))]
             ))
         );
@@ -582,9 +578,7 @@ mod test {
         assert_eq!(
             parser.expr(),
             Ok(Expr::Call(
-                Box::new(Expr::Terminal(Terminal::Ident(
-                    get_or_intern("x")
-                ))),
+                Box::new(Expr::Terminal(Terminal::Ident(get_or_intern("x")))),
                 vec![
                     Expr::Terminal(Terminal::Int(0)),
                     Expr::Terminal(Terminal::Int(1))
@@ -602,15 +596,11 @@ mod test {
         assert_eq!(
             parser.expr(),
             Ok(Expr::Member(
-                Box::new(Expr::Terminal(Terminal::Ident(
-                    get_or_intern("x")
-                ))),
+                Box::new(Expr::Terminal(Terminal::Ident(get_or_intern("x")))),
                 get_or_intern("y")
             ))
         );
     }
-
-    
 
     #[test]
     fn while_expr() {
@@ -618,9 +608,7 @@ mod test {
         assert_eq!(
             parser.while_expr(),
             Ok(Expr::While(
-                Box::new(Expr::Terminal(Terminal::Ident(
-                    get_or_intern("x")
-                ))),
+                Box::new(Expr::Terminal(Terminal::Ident(get_or_intern("x")))),
                 Block {
                     statements: vec![],
                     expr: Some(Box::new(Expr::Terminal(Terminal::Int(1))))
@@ -628,6 +616,4 @@ mod test {
             ))
         );
     }
-
-    
 }

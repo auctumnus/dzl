@@ -1,6 +1,10 @@
 use lasso::Spur;
 
-use super::{Parser, expr::{Expr, BinaryOp}, types::Type};
+use super::{
+    expr::{BinaryOp, Expr},
+    types::Type,
+    Parser,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DeclarationKind {
@@ -145,7 +149,8 @@ impl Parser<'_> {
         let keyword_statements = &vec![("return", 0), ("break", 1), ("continue", 2)];
         self.lexeme(|s| {
             if let Ok(keyword) = s.match_to(keyword_statements).copied() {
-                if keyword == 2 { // continue
+                if keyword == 2 {
+                    // continue
                     if s.peek() == Some(';') {
                         s.next();
                     }
@@ -189,10 +194,10 @@ impl Parser<'_> {
                 if s.peek() == Some(';') {
                     s.next();
                     s.skip_whitespace();
-                    return Ok(Stmt::Statement(expr))
+                    return Ok(Stmt::Statement(expr));
                 }
                 s.skip_whitespace();
-                return Ok(Stmt::Expr(expr))
+                return Ok(Stmt::Expr(expr));
             };
             if s.peek() == Some(';') {
                 s.next();
@@ -204,7 +209,7 @@ impl Parser<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::{parse::terminal::Terminal, interner::get_or_intern};
+    use crate::{interner::get_or_intern, parse::terminal::Terminal};
 
     use super::*;
     #[test]
@@ -294,45 +299,31 @@ mod test {
     }
     #[test]
     fn break_stmt() {
-        assert_eq!(
-            Parser::from("break").statement(),
-            Ok(Stmt::Break(None))
-        );
-        assert_eq!(
-            Parser::from("break;").statement(),
-            Ok(Stmt::Break(None))
-        );
+        assert_eq!(Parser::from("break").statement(), Ok(Stmt::Break(None)));
+        assert_eq!(Parser::from("break;").statement(), Ok(Stmt::Break(None)));
         assert_eq!(
             Parser::from("break 1").statement(),
-            Ok(Stmt::Break(Some(Box::new(Expr::Terminal(Terminal::Int(1))))))
+            Ok(Stmt::Break(Some(Box::new(Expr::Terminal(Terminal::Int(
+                1
+            ))))))
         );
     }
 
     #[test]
     fn continue_stmt() {
-        assert_eq!(
-            Parser::from("continue").statement(),
-            Ok(Stmt::Continue)
-        );
-        assert_eq!(
-            Parser::from("continue;").statement(),
-            Ok(Stmt::Continue)
-        );
+        assert_eq!(Parser::from("continue").statement(), Ok(Stmt::Continue));
+        assert_eq!(Parser::from("continue;").statement(), Ok(Stmt::Continue));
     }
 
     #[test]
     fn return_stmt() {
-        assert_eq!(
-            Parser::from("return").statement(),
-            Ok(Stmt::Return(None))
-        );
-        assert_eq!(
-            Parser::from("return;").statement(),
-            Ok(Stmt::Return(None))
-        );
+        assert_eq!(Parser::from("return").statement(), Ok(Stmt::Return(None)));
+        assert_eq!(Parser::from("return;").statement(), Ok(Stmt::Return(None)));
         assert_eq!(
             Parser::from("return 1").statement(),
-            Ok(Stmt::Return(Some(Box::new(Expr::Terminal(Terminal::Int(1))))))
+            Ok(Stmt::Return(Some(Box::new(Expr::Terminal(Terminal::Int(
+                1
+            ))))))
         );
     }
     #[test]
