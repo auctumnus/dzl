@@ -3,6 +3,8 @@ use std::collections::HashSet;
 use lasso::Spur;
 use lazy_static::lazy_static;
 
+use crate::interner::get_or_intern;
+
 use super::expr::Expr;
 use super::statements::Stmt;
 use super::strings::DzStr;
@@ -62,7 +64,7 @@ impl Parser<'_> {
                 if RESERVED_NAMES.contains(&identifier.as_str()) {
                     return Err(format!("identifier '{identifier}' is reserved"));
                 }
-                let identifier = s.rodeo.get_or_intern(identifier);
+                let identifier = get_or_intern(identifier);
                 Ok(identifier)
             }
             _ => Err("identifier must start with XID_Start or _".to_string()),
@@ -235,12 +237,13 @@ impl Parser<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::interner::resolve;
     use crate::parse::expr::BinaryOp;
     use crate::parse::statements::DeclarationKind;
     #[test]
     fn ident() {
         let mut parser = Parser::from("xyz");
-        assert_eq!(parser.ident().map(|i| parser.rodeo.resolve(&i)), Ok("xyz"));
+        assert_eq!(parser.ident().map(resolve), Ok("xyz".to_string()));
         assert_eq!(parser.position.pos, 3);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
@@ -249,7 +252,7 @@ mod test {
     #[test]
     fn unicode_ident() {
         let mut parser = Parser::from("ಠ_ಠ");
-        assert_eq!(parser.ident().map(|i| parser.rodeo.resolve(&i)), Ok("ಠ_ಠ"));
+        assert_eq!(parser.ident().map(resolve), Ok("ಠ_ಠ".to_string()));
         assert_eq!(parser.position.pos, 3);
         assert_eq!(parser.buffer, Vec::new());
         assert_eq!(parser.lexeme_stack, Vec::new());
@@ -282,7 +285,7 @@ mod test {
         let mut parser = Parser::from("ident");
         assert_eq!(
             parser.terminal(),
-            Ok(Terminal::Ident(parser.rodeo.get_or_intern("ident")))
+            Ok(Terminal::Ident(get_or_intern("ident")))
         );
         assert_eq!(Parser::from("123").terminal(), Ok(Terminal::Int(123)));
         assert_eq!(
@@ -298,7 +301,7 @@ mod test {
         assert_eq!(
             parser.terminal(),
             Ok(Terminal::String(DzStr::Simple(
-                parser.rodeo.get_or_intern("hello world")
+                get_or_intern("hello world")
             )))
         );
     }
@@ -321,7 +324,7 @@ mod test {
             parser.function_definition(),
             Ok(Function {
                 generic: Vec::new(),
-                args: vec![(parser.rodeo.get_or_intern("a"), None,)],
+                args: vec![(get_or_intern("a"), None,)],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
             })
@@ -331,7 +334,7 @@ mod test {
             parser.function_definition(),
             Ok(Function {
                 generic: Vec::new(),
-                args: vec![(parser.rodeo.get_or_intern("a"), Some(Type::Number),)],
+                args: vec![(get_or_intern("a"), Some(Type::Number),)],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
             })
@@ -340,8 +343,8 @@ mod test {
         assert_eq!(
             parser.function_definition(),
             Ok(Function {
-                generic: vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())],
-                args: vec![(parser.rodeo.get_or_intern("a"), Some(Type::Number),)],
+                generic: vec![Type::Ident(get_or_intern("T"), Vec::new())],
+                args: vec![(get_or_intern("a"), Some(Type::Number),)],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
             })
@@ -352,8 +355,8 @@ mod test {
             Ok(Function {
                 generic: Vec::new(),
                 args: vec![
-                    (parser.rodeo.get_or_intern("a"), Some(Type::Number),),
-                    (parser.rodeo.get_or_intern("b"), Some(Type::Number),),
+                    (get_or_intern("a"), Some(Type::Number),),
+                    (get_or_intern("b"), Some(Type::Number),),
                 ],
                 return_type: None,
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
@@ -365,8 +368,8 @@ mod test {
             Ok(Function {
                 generic: Vec::new(),
                 args: vec![
-                    (parser.rodeo.get_or_intern("a"), Some(Type::Number),),
-                    (parser.rodeo.get_or_intern("b"), Some(Type::Number),),
+                    (get_or_intern("a"), Some(Type::Number),),
+                    (get_or_intern("b"), Some(Type::Number),),
                 ],
                 return_type: Some(Type::Number),
                 body: Box::new(Expr::Terminal(Terminal::Int(1)))
@@ -392,11 +395,11 @@ mod test {
                     statements: vec![Stmt::Declaration(
                         DeclarationKind::Let,
                         None,
-                        parser.rodeo.get_or_intern("a"),
+                        get_or_intern("a"),
                         Expr::Terminal(Terminal::Int(1))
                     ),],
                     expr: Some(Box::new(Expr::Terminal(Terminal::Ident(
-                        parser.rodeo.get_or_intern("a")
+                        get_or_intern("a")
                     )))),
                 })))
             })

@@ -320,7 +320,7 @@ impl Parser<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::parse::statements::Stmt;
+    use crate::{parse::statements::Stmt, interner::get_or_intern};
 
     use super::*;
     #[test]
@@ -414,7 +414,7 @@ mod test {
             parser.if_expr(),
             Ok(Expr::If(
                 Box::new(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 ))),
                 Block {
                     statements: vec![],
@@ -478,7 +478,7 @@ mod test {
             parser.if_expr(),
             Ok(Expr::If(
                 Box::new(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 ))),
                 Block {
                     statements: vec![],
@@ -558,7 +558,7 @@ mod test {
             parser.expr(),
             Ok(Expr::Index(
                 Box::new(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 ))),
                 Box::new(Expr::Terminal(Terminal::Int(0)))
             ))
@@ -572,7 +572,7 @@ mod test {
             parser.expr(),
             Ok(Expr::Call(
                 Box::new(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 ))),
                 vec![Expr::Terminal(Terminal::Int(0))]
             ))
@@ -583,7 +583,7 @@ mod test {
             parser.expr(),
             Ok(Expr::Call(
                 Box::new(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 ))),
                 vec![
                     Expr::Terminal(Terminal::Int(0)),
@@ -603,9 +603,9 @@ mod test {
             parser.expr(),
             Ok(Expr::Member(
                 Box::new(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 ))),
-                parser.rodeo.get_or_intern("y")
+                get_or_intern("y")
             ))
         );
     }
@@ -619,7 +619,7 @@ mod test {
             parser.while_expr(),
             Ok(Expr::While(
                 Box::new(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 ))),
                 Block {
                     statements: vec![],

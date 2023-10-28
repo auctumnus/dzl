@@ -1,13 +1,12 @@
-mod expr;
+pub mod expr;
 mod lexeme;
 mod numbers;
 mod strings;
-mod terminal;
-mod types;
+pub mod terminal;
+pub mod types;
 mod util;
-mod statements;
+pub mod statements;
 
-use lasso::Rodeo;
 use std::{iter::Peekable, str::Chars};
 
 use self::statements::Stmt;
@@ -26,8 +25,6 @@ pub struct Parser<'src> {
     /// TODO: Try to make this into a string for memory savings. At the moment,
     /// grabbing the first/last character as a peek is not particularly doable.
     buffer: Vec<char>,
-    /// String interner.
-    rodeo: Rodeo,
     /// Stack of (start, lexeme) pairs.
     lexeme_stack: Vec<(Position, String)>,
 }
@@ -48,7 +45,6 @@ impl Parser<'_> {
             },
             src,
             buffer: Vec::new(),
-            rodeo: Rodeo::new(),
             lexeme_stack: Vec::new(),
         }
     }

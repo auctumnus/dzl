@@ -1,5 +1,7 @@
 use lasso::Spur;
 
+use crate::interner::get_or_intern;
+
 use super::{expr::Expr, Parser};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -79,7 +81,7 @@ impl Parser<'_> {
                     }
                     s.next();
                 }
-                let string = s.rodeo.get_or_intern(string);
+                let string = get_or_intern(string);
                 Ok(TemplateElement::String(string))
             }
         })
@@ -117,7 +119,7 @@ impl Parser<'_> {
                 }
             }
 
-            let string = s.rodeo.get_or_intern(string);
+            let string = get_or_intern(string);
 
             Ok(string)
         })
@@ -156,7 +158,7 @@ mod test {
         let mut parser = Parser::from("\"hello world\"");
         assert_eq!(
             parser.string(),
-            Ok(DzStr::Simple(parser.rodeo.get_or_intern("hello world")))
+            Ok(DzStr::Simple(get_or_intern("hello world")))
         );
         assert_eq!(parser.position.pos, 13);
         assert_eq!(parser.buffer, Vec::new());
@@ -170,7 +172,7 @@ mod test {
         let mut parser = Parser::from("`hello world`");
         assert_eq!(
             parser.string(),
-            Ok(DzStr::Simple(parser.rodeo.get_or_intern("hello world")))
+            Ok(DzStr::Simple(get_or_intern("hello world")))
         );
     }
 
@@ -180,9 +182,9 @@ mod test {
         assert_eq!(
             parser.string(),
             Ok(DzStr::Template(vec![
-                TemplateElement::String(parser.rodeo.get_or_intern("hello ")),
+                TemplateElement::String(get_or_intern("hello ")),
                 TemplateElement::Expression(Expr::Terminal(Terminal::Ident(
-                    parser.rodeo.get_or_intern("x")
+                    get_or_intern("x")
                 )))
             ]))
         );
@@ -191,7 +193,7 @@ mod test {
         assert_eq!(
             parser.string(),
             Ok(DzStr::Template(vec![TemplateElement::Expression(
-                Expr::Terminal(Terminal::Ident(parser.rodeo.get_or_intern("x")))
+                Expr::Terminal(Terminal::Ident(get_or_intern("x")))
             )]))
         );
     }
@@ -202,7 +204,7 @@ mod test {
         assert_eq!(
             parser.string(),
             Ok(DzStr::Simple(
-                parser.rodeo.get_or_intern("\n\r\t\"\'\x07\x1b\\\x00")
+                get_or_intern("\n\r\t\"\'\x07\x1b\\\x00")
             ))
         );
     }
@@ -213,13 +215,13 @@ mod test {
         let mut parser = Parser::from(r#""\u{1f600}\u{1f600}\u{1f600}""#);
         assert_eq!(
             parser.string(),
-            Ok(DzStr::Simple(parser.rodeo.get_or_intern("😀😀😀")))
+            Ok(DzStr::Simple(get_or_intern("😀😀😀")))
         );
 
         let mut parser = Parser::from("`\u{1f600}\\\\`");
         assert_eq!(
             parser.string(),
-            Ok(DzStr::Simple(parser.rodeo.get_or_intern("😀\\")))
+            Ok(DzStr::Simple(get_or_intern("😀\\")))
         );
     }
 

@@ -204,7 +204,7 @@ impl Parser<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::parse::terminal::Terminal;
+    use crate::{parse::terminal::Terminal, interner::get_or_intern};
 
     use super::*;
     #[test]
@@ -229,7 +229,7 @@ mod test {
         assert_eq!(
             parser.statement(),
             Ok(Stmt::Assignment(
-                parser.rodeo.get_or_intern("x"),
+                get_or_intern("x"),
                 None,
                 Expr::Terminal(Terminal::Int(0))
             ))
@@ -240,7 +240,7 @@ mod test {
             assert_eq!(
                 parser.statement(),
                 Ok(Stmt::Assignment(
-                    parser.rodeo.get_or_intern("x"),
+                    get_or_intern("x"),
                     Some(kind),
                     Expr::Terminal(Terminal::Int(0))
                 ))
@@ -263,7 +263,7 @@ mod test {
             Ok(Stmt::Declaration(
                 DeclarationKind::Let,
                 None,
-                parser.rodeo.get_or_intern("x"),
+                get_or_intern("x"),
                 Expr::Terminal(Terminal::Int(0))
             ))
         );
@@ -274,7 +274,7 @@ mod test {
             Ok(Stmt::Declaration(
                 DeclarationKind::Const,
                 None,
-                parser.rodeo.get_or_intern("x"),
+                get_or_intern("x"),
                 Expr::Terminal(Terminal::Int(0))
             ))
         );
@@ -284,8 +284,8 @@ mod test {
             parser.statement(),
             Ok(Stmt::Declaration(
                 DeclarationKind::Let,
-                Some(Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())),
-                parser.rodeo.get_or_intern("x"),
+                Some(Type::Ident(get_or_intern("T"), Vec::new())),
+                get_or_intern("x"),
                 Expr::Terminal(Terminal::Int(0))
             ))
         );
@@ -341,8 +341,8 @@ mod test {
         assert_eq!(
             parser.statement(),
             Ok(Stmt::Type(
-                parser.rodeo.get_or_intern("T"),
-                Type::Ident(parser.rodeo.get_or_intern("int"), vec![])
+                get_or_intern("T"),
+                Type::Ident(get_or_intern("int"), vec![])
             ))
         );
     }

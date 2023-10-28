@@ -1,4 +1,8 @@
+use std::fmt::Display;
+
 use lasso::Spur;
+
+use crate::interner::resolve;
 
 use super::Parser;
 /*
@@ -33,6 +37,64 @@ pub enum Type {
     Object(Vec<(Spur, Type)>),
     Tuple(Vec<Type>),
     Function(Vec<Type>, Box<Type>),
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            /*Type::Int(size) => write!(f, "int{}", size),
+            Type::Uint(size) => write!(f, "uint{}", size),*/
+            Type::Number => write!(f, "number"),
+            Type::Float => write!(f, "float"),
+            Type::String => write!(f, "string"),
+            Type::Bool => write!(f, "bool"),
+            Type::Void => write!(f, "void"),
+            Type::Ident(ident, generics) => {
+                write!(f, "{}", resolve(*ident))?;
+                if !generics.is_empty() {
+                    write!(f, "<")?;
+                    for (i, generic) in generics.iter().enumerate() {
+                        write!(f, "{generic}")?;
+                        if i != generics.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, ">")?;
+                }
+                Ok(())
+            }
+            Type::Object(fields) => {
+                write!(f, "{{")?;
+                for (i, (ident, r#type)) in fields.iter().enumerate() {
+                    write!(f, "{}: {}", resolve(*ident), r#type)?;
+                    if i != fields.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")
+            }
+            Type::Tuple(types) => {
+                write!(f, "(")?;
+                for (i, t) in types.iter().enumerate() {
+                    write!(f, "{t}")?;
+                    if i != types.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            Type::Function(args, ret) => {
+                write!(f, "(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    write!(f, "{arg}")?;
+                    if i != args.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ") -> {ret}")
+            }
+        }
+    }
 }
 
 lazy_static::lazy_static! {
@@ -143,6 +205,8 @@ impl Parser<'_> {
 
 #[cfg(test)]
 mod test {
+    use crate::interner::get_or_intern;
+
     use super::*;
 
     #[test]
@@ -155,37 +219,38 @@ mod test {
 
     #[test]
     fn ident() {
+        let ident = get_or_intern("ident");
         let mut parser = Parser::from("ident");
         assert_eq!(
             parser.r#type(),
-            Ok(Type::Ident(parser.rodeo.get_or_intern("ident"), Vec::new()))
+            Ok(Type::Ident(ident, Vec::new()))
         );
         let mut parser = Parser::from("ident<T>");
         assert_eq!(
             parser.r#type(),
             Ok(Type::Ident(
-                parser.rodeo.get_or_intern("ident"),
-                vec![Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new())]
+                get_or_intern("ident"),
+                vec![Type::Ident(get_or_intern("T"), Vec::new())]
             ))
         );
         let mut parser = Parser::from("ident<T,K>");
         assert_eq!(
             parser.r#type(),
             Ok(Type::Ident(
-                parser.rodeo.get_or_intern("ident"),
+                get_or_intern("ident"),
                 vec![
-                    Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new()),
-                    Type::Ident(parser.rodeo.get_or_intern("K"), Vec::new())
+                    Type::Ident(get_or_intern("T"), Vec::new()),
+                    Type::Ident(get_or_intern("K"), Vec::new())
                 ]
             ))
         );
         assert_eq!(
             Parser::from("ident<T,K,>").r#type(),
             Ok(Type::Ident(
-                parser.rodeo.get_or_intern("ident"),
+                get_or_intern("ident"),
                 vec![
-                    Type::Ident(parser.rodeo.get_or_intern("T"), Vec::new()),
-                    Type::Ident(parser.rodeo.get_or_intern("K"), Vec::new())
+                    Type::Ident(get_or_intern("T"), Vec::new()),
+                    Type::Ident(get_or_intern("K"), Vec::new())
                 ]
             ))
         );
@@ -197,7 +262,7 @@ mod test {
         assert_eq!(
             parser.r#type(),
             Ok(Type::Object(vec![(
-                parser.rodeo.get_or_intern("a"),
+                get_or_intern("a"),
                 Type::Number
             )]))
         );
@@ -205,16 +270,16 @@ mod test {
         assert_eq!(
             parser.r#type(),
             Ok(Type::Object(vec![
-                (parser.rodeo.get_or_intern("a"), Type::Number),
-                (parser.rodeo.get_or_intern("b"), Type::Number)
+                (get_or_intern("a"), Type::Number),
+                (get_or_intern("b"), Type::Number)
             ]))
         );
         let mut parser = Parser::from("{a: number, b: number,}");
         assert_eq!(
             parser.r#type(),
             Ok(Type::Object(vec![
-                (parser.rodeo.get_or_intern("a"), Type::Number),
-                (parser.rodeo.get_or_intern("b"), Type::Number)
+                (get_or_intern("a"), Type::Number),
+                (get_or_intern("b"), Type::Number)
             ]))
         );
     }

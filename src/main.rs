@@ -1,5 +1,8 @@
 #![warn(clippy::pedantic)]
 mod parse;
+mod interpret;
+mod typecheck;
+mod interner;
 
 fn main() {
     let program = r#"let foo = (x: int) => x * 2
